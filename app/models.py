@@ -28,7 +28,7 @@ class WOLDevice(BaseModel):
     id: Optional[int] = None
     name: str = Field(..., description="设备名称")
     hostname: Optional[str] = Field(None, description="主机名")
-    ip_address: Optional[str] = Field(None, description="IP地址")
+    ip_address: Optional[str] = Field(None, description="IP地址或CIDR")
     mac_address: str = Field(..., description="MAC地址")
     description: Optional[str] = Field(None, description="设备描述")
     created_at: datetime = Field(default_factory=datetime.now)
@@ -45,6 +45,65 @@ class WOLDevice(BaseModel):
             # 重新格式化为标准格式
             return ':'.join([mac[i:i+2] for i in range(0, 12, 2)])
         return v
+    
+    @validator('ip_address')
+    def validate_ip_address(cls, v):
+        """验证IP地址或CIDR格式"""
+        if v:
+            import ipaddress
+            try:
+                # 尝试解析为IP地址或网络地址
+                if '/' in v:
+                    # CIDR格式
+                    ipaddress.ip_network(v, strict=False)
+                else:
+                    # 纯IP地址，默认为/24
+                    ipaddress.ip_address(v)
+                return v
+            except ValueError:
+                raise ValueError('IP地址或CIDR格式错误')
+        return v
+    
+    @validator('hostname')
+    def validate_hostname(cls, v):
+        """验证主机名格式，支持mDNS格式(.local, .lan)"""
+        if v:
+            # 简单的主机名验证，允许mDNS格式
+            v = v.strip()
+            if not v:
+                return None
+            # 允许标准主机名和mDNS格式(.local, .lan等)
+            import re
+            # 主机名可以包含字母、数字、连字符和点号
+            if re.match(r'^[a-zA-Z0-9.-]+$', v):
+                return v
+            else:
+                raise ValueError('主机名格式错误')
+        return v
+    
+    def get_display_address(self) -> str:
+        """获取用于显示的主机名或IP地址
+        
+        优先级：
+        1. 主机名（支持mDNS格式如.local, .lan）
+        2. IP地址
+        3. '-'（无信息）
+        """
+        if self.hostname:
+            return self.hostname
+        elif self.ip_address:
+            # 如果是CIDR格式，只显示IP部分
+            if '/' in self.ip_address:
+                return self.ip_address.split('/')[0]
+            return self.ip_address
+        else:
+            return '-'
+    
+    def is_mdns_hostname(self) -> bool:
+        """检查是否为mDNS主机名格式"""
+        if not self.hostname:
+            return False
+        return self.hostname.endswith('.local') or self.hostname.endswith('.lan')
 
 
 class ScheduledTask(BaseModel):

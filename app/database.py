@@ -300,7 +300,14 @@ class DatabaseManager:
     ) -> int:
         """根据过滤条件删除执行记录"""
         Execution = Query()
-        conditions = []
+        
+        # 如果没有任何过滤条件，删除所有记录
+        if not search and not task_name:
+            all_records = self.executions_db.all()
+            deleted_count = len(all_records)
+            if deleted_count > 0:
+                self.executions_db.truncate()  # 清空所有记录
+            return deleted_count
         
         if search:
             search_lower = search.lower()
@@ -321,14 +328,7 @@ class DatabaseManager:
             return deleted_count
         
         if task_name:
-            conditions.append(Execution.task_name == task_name)
-        
-        if conditions:
-            # 使用AND连接多个条件
-            condition = conditions[0]
-            for c in conditions[1:]:
-                condition = condition & c
-            return len(self.executions_db.remove(condition))
+            return len(self.executions_db.remove(Execution.task_name == task_name))
         
         return 0
     

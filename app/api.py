@@ -84,10 +84,19 @@ class ServerManagerAPI:
         async def get_all_devices():
             try:
                 devices = self.db_manager.get_all_devices()
+                # 为每个设备添加优化的显示地址
+                device_data = []
+                for device in devices:
+                    device_dict = device.dict()
+                    # 添加优化的显示地址字段
+                    device_dict['display_address'] = device.get_display_address()
+                    device_dict['is_mdns'] = device.is_mdns_hostname()
+                    device_data.append(device_dict)
+                
                 return ApiResponse(
                     success=True, 
                     message="获取设备列表成功", 
-                    data=[device.dict() for device in devices]
+                    data=device_data
                 )
             except Exception as e:
                 logger.error(f"获取设备列表失败: {e}")
@@ -348,21 +357,73 @@ class ServerManagerAPI:
         @self.app.get("/api/status", response_model=ApiResponse)
         async def get_system_status():
             try:
+                import psutil
+                import platform
+                from datetime import datetime
+                
                 jobs_info = self.scheduler.get_all_jobs_info()
                 device_count = len(self.db_manager.get_all_devices())
                 task_count = len(self.db_manager.get_all_tasks())
                 enabled_task_count = len(self.db_manager.get_enabled_tasks())
                 
+                # 获取系统资源信息
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+                
+                # 获取网络统计
+                network = psutil.net_io_counters()
+                
+                # 获取系统启动时间
+                boot_time = datetime.fromtimestamp(psutil.boot_time())
+                current_time = datetime.now()
+                uptime = current_time - boot_time
+                
                 return ApiResponse(
                     success=True,
                     message="获取系统状态成功",
                     data={
-                        "scheduler_running": self.scheduler.is_running,
-                        "active_jobs": len(jobs_info),
-                        "device_count": device_count,
-                        "task_count": task_count,
-                        "enabled_task_count": enabled_task_count,
-                        "jobs": jobs_info
+                        "server": {
+                            "status": "running",
+                            "uptime": str(uptime).split('.')[0],  # 去掉微秒
+                            "version": "1.2.0",
+                            "python_version": platform.python_version(),
+                            "platform": platform.system(),
+                            "architecture": platform.machine()
+                        },
+                        "system": {
+                            "cpu_usage": round(cpu_percent, 1),
+                            "cpu_count": psutil.cpu_count(),
+                            "memory": {
+                                "total": memory.total,
+                                "available": memory.available,
+                                "used": memory.used,
+                                "percent": round(memory.percent, 1)
+                            },
+                            "disk": {
+                                "total": disk.total,
+                                "used": disk.used,
+                                "free": disk.free,
+                                "percent": round((disk.used / (disk.used + disk.free)) * 100, 1)
+                            },
+                            "network": {
+                                "bytes_sent": network.bytes_sent,
+                                "bytes_recv": network.bytes_recv,
+                                "packets_sent": network.packets_sent,
+                                "packets_recv": network.packets_recv
+                            }
+                        },
+                        "scheduler": {
+                            "running": self.scheduler.is_running,
+                            "active_jobs": len(jobs_info),
+                            "jobs": jobs_info
+                        },
+                        "database": {
+                            "device_count": device_count,
+                            "task_count": task_count,
+                            "enabled_task_count": enabled_task_count,
+                            "execution_count": len(self.db_manager.get_all_executions(limit=1000))
+                        }
                     }
                 )
             except Exception as e:

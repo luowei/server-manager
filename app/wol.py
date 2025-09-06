@@ -62,7 +62,7 @@ class WOLManager:
         
         Args:
             mac_address: 目标设备的MAC地址
-            ip_address: 广播IP地址，默认为255.255.255.255
+            ip_address: 广播IP地址、IP地址或CIDR，默认为255.255.255.255
             port: WOL端口，默认为9
             
         Returns:
@@ -72,17 +72,13 @@ class WOLManager:
             # 验证MAC地址
             mac = WOLManager.validate_mac_address(mac_address)
             
-            # 验证IP地址（如果提供）
-            if ip_address and not WOLManager.validate_ip_address(ip_address):
-                raise ValueError(f"无效的IP地址: {ip_address}")
+            # 计算广播地址
+            broadcast_address = WOLManager.get_broadcast_address_smart(ip_address)
             
             # 使用wakeonlan库发送魔术包
-            if ip_address:
-                send_magic_packet(mac, ip_address=ip_address, port=port)
-            else:
-                send_magic_packet(mac, port=port)
+            send_magic_packet(mac, ip_address=broadcast_address, port=port)
             
-            logger.info(f"WOL包已发送到 {mac} (IP: {ip_address or 'broadcast'}, Port: {port})")
+            logger.info(f"WOL包已发送到 {mac} (广播地址: {broadcast_address}, Port: {port})")
             return True
             
         except Exception as e:
@@ -221,4 +217,76 @@ class WOLManager:
             
         except Exception as e:
             logger.error(f"计算广播地址失败: {e}")
+            return "255.255.255.255"
+    
+    @staticmethod
+    def get_broadcast_address_smart(ip_address: Optional[str] = None) -> str:
+        """
+        智能计算广播地址
+        
+        Args:
+            ip_address: IP地址、CIDR或None（自动检测本机网络）
+            
+        Returns:
+            广播地址
+        """
+        import ipaddress
+        
+        try:
+            if not ip_address:
+                # 未指定IP地址，使用本机网络接口
+                return WOLManager.get_local_broadcast_address()
+            
+            if '/' in ip_address:
+                # CIDR格式
+                network = ipaddress.ip_network(ip_address, strict=False)
+                return str(network.broadcast_address)
+            else:
+                # 纯IP地址，默认/24子网掩码
+                network = ipaddress.ip_network(f"{ip_address}/24", strict=False)
+                return str(network.broadcast_address)
+                
+        except Exception as e:
+            logger.error(f"智能计算广播地址失败: {e}")
+            return "255.255.255.255"
+    
+    @staticmethod
+    def get_local_broadcast_address() -> str:
+        """
+        获取本机网络的广播地址
+        
+        Returns:
+            本机网络的广播地址
+        """
+        import psutil
+        import ipaddress
+        
+        try:
+            # 获取网络接口信息
+            interfaces = psutil.net_if_addrs()
+            
+            for interface, addrs in interfaces.items():
+                # 跳过回环接口
+                if interface.startswith('lo'):
+                    continue
+                    
+                ipv4_addr = None
+                netmask = None
+                
+                for addr in addrs:
+                    if addr.family == socket.AF_INET:
+                        ipv4_addr = addr.address
+                        netmask = addr.netmask
+                        break
+                
+                if ipv4_addr and netmask and not ipv4_addr.startswith('169.254'):
+                    # 计算网络地址和广播地址
+                    network = ipaddress.ip_network(f"{ipv4_addr}/{netmask}", strict=False)
+                    return str(network.broadcast_address)
+            
+            # 如果没有找到合适的接口，返回默认广播地址
+            return "255.255.255.255"
+            
+        except Exception as e:
+            logger.error(f"获取本机网络广播地址失败: {e}")
             return "255.255.255.255"

@@ -150,6 +150,9 @@ function switchTab(tabName) {
 
 // 加载当前标签页内容
 function loadCurrentTab() {
+    // 先停止任何现有的自动刷新
+    stopSystemInfoRefresh();
+    
     switch(currentTab) {
         case 'devices':
             loadDevices();
@@ -162,6 +165,7 @@ function loadCurrentTab() {
             break;
         case 'system':
             loadSystemInfo();
+            startSystemInfoRefresh(); // 启动系统状态自动刷新
             break;
     }
 }
@@ -216,6 +220,38 @@ function updateSystemStatus(status) {
 }
 
 // WOL设备管理
+
+// 格式化设备地址显示
+function formatDeviceAddress(device) {
+    // 使用后端计算的优化显示地址
+    const displayAddress = device.display_address || '-';
+    
+    if (displayAddress === '-') {
+        return '<span class="text-muted">-</span>';
+    }
+    
+    // 如果是mDNS主机名，添加特殊样式和图标
+    if (device.is_mdns) {
+        return `<span class="text-success" title="mDNS主机名">
+            <i class="bi bi-broadcast"></i> ${displayAddress}
+        </span>`;
+    }
+    
+    // 检查是否为主机名（非IP地址）
+    const isIP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(displayAddress);
+    if (!isIP) {
+        // 普通主机名
+        return `<span class="text-info" title="主机名">
+            <i class="bi bi-hdd-network"></i> ${displayAddress}
+        </span>`;
+    } else {
+        // IP地址
+        return `<span class="text-primary" title="IP地址">
+            <i class="bi bi-router"></i> ${displayAddress}
+        </span>`;
+    }
+}
+
 async function loadDevices() {
     try {
         const response = await apiRequest('/api/devices');
@@ -237,7 +273,7 @@ function renderDevicesTable() {
         row.innerHTML = `
             <td><span class="device-status unknown" id="status-${device.id}"></span></td>
             <td>${device.name}</td>
-            <td>${device.hostname || device.ip_address || '-'}</td>
+            <td>${formatDeviceAddress(device)}</td>
             <td><code>${device.mac_address}</code></td>
             <td>${device.description || '-'}</td>
             <td>
@@ -281,6 +317,9 @@ async function wakeDevice(deviceId) {
     try {
         const response = await apiRequest('/api/wol/wake', {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({device_id: deviceId})
         });
         
@@ -291,6 +330,7 @@ async function wakeDevice(deviceId) {
             showAlert('WOL包发送失败: ' + response.message, 'danger');
         }
     } catch (error) {
+        console.error('WOL唤醒错误:', error);
         showAlert('唤醒设备失败', 'danger');
     }
 }
@@ -681,16 +721,19 @@ async function deleteFilteredExecutions() {
     
     try {
         let url = '/api/executions';
+        const requestOptions = {
+            method: 'DELETE'
+        };
+        
         if (isSearchMode) {
-            // 只有在搜索模式下才添加搜索参数
+            // 搜索模式下通过查询参数传递搜索条件
             const params = new URLSearchParams();
             params.append('search', searchValue);
             url = `/api/executions?${params.toString()}`;
         }
+        // 如果不是搜索模式，直接请求 /api/executions (无参数) 将删除所有记录
         
-        const response = await apiRequest(url, {
-            method: 'DELETE'
-        });
+        const response = await apiRequest(url, requestOptions);
         
         if (response.success) {
             showAlert(response.message, 'success');
@@ -748,30 +791,275 @@ function viewExecutionLog(executionId) {
 async function loadSystemInfo() {
     try {
         const response = await apiRequest('/api/status');
-        if (response.success) {
+        if (response.success && response.data) {
             renderSystemInfo(response.data);
+        } else {
+            console.error('系统状态API响应错误:', response);
+            const systemInfo = document.getElementById('system-info');
+            if (systemInfo) {
+                systemInfo.innerHTML = '<div class="alert alert-danger">系统状态加载失败，请检查服务器连接或刷新页面重试</div>';
+            }
         }
     } catch (error) {
         console.error('加载系统信息失败:', error);
+        const systemInfo = document.getElementById('system-info');
+        if (systemInfo) {
+            systemInfo.innerHTML = '<div class="alert alert-danger">系统状态加载异常，请检查网络连接或刷新页面重试</div>';
+        }
+    }
+}
+
+// 自动刷新系统状态
+let systemInfoRefreshInterval;
+
+function startSystemInfoRefresh() {
+    // 清除现有的定时器
+    if (systemInfoRefreshInterval) {
+        clearInterval(systemInfoRefreshInterval);
+    }
+    
+    // 只在系统状态页面启动自动刷新
+    if (currentTab === 'status') {
+        systemInfoRefreshInterval = setInterval(() => {
+            if (currentTab === 'status') {
+                loadSystemInfo();
+            } else {
+                // 如果不在系统状态页面，停止刷新
+                stopSystemInfoRefresh();
+            }
+        }, 5000); // 每5秒刷新一次
+    }
+}
+
+function stopSystemInfoRefresh() {
+    if (systemInfoRefreshInterval) {
+        clearInterval(systemInfoRefreshInterval);
+        systemInfoRefreshInterval = null;
     }
 }
 
 function renderSystemInfo(status) {
     const systemInfo = document.getElementById('system-info');
+    
+    // 检查数据结构是否正确
+    if (!status || !status.server || !status.system || !status.scheduler || !status.database) {
+        console.error('系统状态数据结构不完整:', status);
+        systemInfo.innerHTML = '<div class="alert alert-warning">系统状态数据加载不完整，请刷新页面重试</div>';
+        return;
+    }
+    
+    // 格式化字节单位
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // 格式化网络流量
+    function formatNetworkBytes(bytes) {
+        const gb = bytes / (1024 * 1024 * 1024);
+        if (gb >= 1) return gb.toFixed(2) + ' GB';
+        const mb = bytes / (1024 * 1024);
+        if (mb >= 1) return mb.toFixed(2) + ' MB';
+        const kb = bytes / 1024;
+        return kb.toFixed(2) + ' KB';
+    }
+    
+    // 获取进度条颜色
+    function getProgressBarColor(percent) {
+        if (percent < 50) return 'bg-success';
+        if (percent < 80) return 'bg-warning';
+        return 'bg-danger';
+    }
+    
     systemInfo.innerHTML = `
-        <div class="row">
-            <div class="col-md-6">
-                <p><strong>调度器状态:</strong> 
-                    <span class="badge ${status.scheduler_running ? 'bg-success' : 'bg-danger'}">
-                        ${status.scheduler_running ? '运行中' : '已停止'}
-                    </span>
-                </p>
-                <p><strong>活动任务:</strong> ${status.active_jobs}</p>
-                <p><strong>设备数量:</strong> ${status.device_count}</p>
+        <!-- 服务器基础信息 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-server"></i> 服务器信息</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>状态:</strong> 
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-circle-fill"></i> ${status.server.status}
+                                    </span>
+                                </p>
+                                <p><strong>运行时间:</strong> ${status.server.uptime}</p>
+                                <p><strong>版本:</strong> ${status.server.version}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Python版本:</strong> ${status.server.python_version}</p>
+                                <p><strong>系统平台:</strong> ${status.server.platform}</p>
+                                <p><strong>架构:</strong> ${status.server.architecture}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-6">
-                <p><strong>任务总数:</strong> ${status.task_count}</p>
-                <p><strong>启用任务:</strong> ${status.enabled_task_count}</p>
+        </div>
+        
+        <!-- 系统资源监控 -->
+        <div class="row mb-4">
+            <!-- CPU使用率 -->
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-cpu"></i> CPU使用率</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>使用率</span>
+                            <span><strong>${status.system.cpu_usage}%</strong></span>
+                        </div>
+                        <div class="progress mb-2" style="height: 20px;">
+                            <div class="progress-bar ${getProgressBarColor(status.system.cpu_usage)}" 
+                                 style="width: ${status.system.cpu_usage}%">
+                                ${status.system.cpu_usage}%
+                            </div>
+                        </div>
+                        <small class="text-muted">核心数: ${status.system.cpu_count}</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 内存使用率 -->
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-memory"></i> 内存使用率</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>已使用</span>
+                            <span><strong>${formatBytes(status.system.memory.used)} / ${formatBytes(status.system.memory.total)}</strong></span>
+                        </div>
+                        <div class="progress mb-2" style="height: 20px;">
+                            <div class="progress-bar ${getProgressBarColor(status.system.memory.percent)}" 
+                                 style="width: ${status.system.memory.percent}%">
+                                ${status.system.memory.percent}%
+                            </div>
+                        </div>
+                        <small class="text-muted">可用: ${formatBytes(status.system.memory.available)}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <!-- 磁盘使用率 -->
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-hdd"></i> 磁盘使用率</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>已使用</span>
+                            <span><strong>${formatBytes(status.system.disk.used)} / ${formatBytes(status.system.disk.total)}</strong></span>
+                        </div>
+                        <div class="progress mb-2" style="height: 20px;">
+                            <div class="progress-bar ${getProgressBarColor(status.system.disk.percent)}" 
+                                 style="width: ${status.system.disk.percent}%">
+                                ${status.system.disk.percent}%
+                            </div>
+                        </div>
+                        <small class="text-muted">可用: ${formatBytes(status.system.disk.free)}</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 网络流量 -->
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-wifi"></i> 网络流量</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="text-center">
+                                    <i class="bi bi-arrow-up text-success fs-4"></i>
+                                    <p class="mb-0"><strong>${formatNetworkBytes(status.system.network.bytes_sent)}</strong></p>
+                                    <small class="text-muted">发送</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center">
+                                    <i class="bi bi-arrow-down text-info fs-4"></i>
+                                    <p class="mb-0"><strong>${formatNetworkBytes(status.system.network.bytes_recv)}</strong></p>
+                                    <small class="text-muted">接收</small>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">发送包: ${status.system.network.packets_sent.toLocaleString()}</small>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">接收包: ${status.system.network.packets_recv.toLocaleString()}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 服务状态 -->
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-gear"></i> 调度器状态</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>状态:</span>
+                            <span class="badge ${status.scheduler.running ? 'bg-success' : 'bg-danger'}">
+                                <i class="bi bi-${status.scheduler.running ? 'play' : 'stop'}-fill"></i>
+                                ${status.scheduler.running ? '运行中' : '已停止'}
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>活动任务:</span>
+                            <span><strong>${status.scheduler.active_jobs}</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-database"></i> 数据统计</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="text-center">
+                                    <h5 class="text-primary">${status.database.device_count}</h5>
+                                    <small class="text-muted">设备</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center">
+                                    <h5 class="text-success">${status.database.enabled_task_count}/${status.database.task_count}</h5>
+                                    <small class="text-muted">启用任务</small>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="text-center">
+                            <small class="text-muted">执行记录: ${status.database.execution_count}</small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;

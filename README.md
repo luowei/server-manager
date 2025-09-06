@@ -45,13 +45,74 @@
 
 ### 方式一：Docker 运行 (推荐)
 
+#### 使用 Docker 直接运行
+
 1. 克隆项目
 ```bash
 git clone <项目地址>
 cd server_manager
 ```
 
-2. 配置环境变量
+2. 构建 Docker 镜像
+```bash
+docker build -t server-manager .
+```
+
+3. 运行 Docker 容器 (推荐使用 host 网络支持 WOL 功能)
+```bash
+# 基本运行
+docker run -d \
+  --name server-manager \
+  --network host \
+  --cap-add NET_RAW \
+  -e SM_PORT=8000 \
+  -e TZ=Asia/Shanghai \
+  -v server-manager-data:/app/data \
+  -v server-manager-logs:/app/logs \
+  server-manager
+
+# 或者使用端口映射模式 (WOL 功能可能受限)
+docker run -d \
+  --name server-manager \
+  -p 8000:8000 \
+  -e SM_PORT=8000 \
+  -e TZ=Asia/Shanghai \
+  -v server-manager-data:/app/data \
+  -v server-manager-logs:/app/logs \
+  server-manager
+```
+
+4. 访问应用
+- Web界面: http://localhost:8000
+- API文档: http://localhost:8000/docs
+
+5. 容器管理命令
+```bash
+# 查看容器状态
+docker ps
+
+# 查看日志
+docker logs -f server-manager
+
+# 停止容器
+docker stop server-manager
+
+# 删除容器
+docker rm server-manager
+
+# 删除镜像
+docker rmi server-manager
+```
+
+#### 使用 Docker Compose 运行
+
+1. 克隆项目
+```bash
+git clone <项目地址>
+cd server_manager
+```
+
+2. 配置环境变量 (可选)
 ```bash
 cp .env.example .env
 # 编辑 .env 文件，根据需要修改配置
