@@ -1,0 +1,62 @@
+
+services:
+  server-manager:
+    build: .
+    container_name: server-manager
+    restart: unless-stopped
+    ports:
+      - "${SM_PORT:-8000}:8000"
+    environment:
+      # 基础配置
+      - SM_HOST=0.0.0.0
+      - SM_PORT=8000
+      - SM_LOG_LEVEL=${SM_LOG_LEVEL:-INFO}
+      - SM_ENV=${SM_ENV:-production}
+      
+      # 数据目录配置
+      - SM_DATA_DIR=/app/data
+      - SM_LOGS_DIR=/app/logs
+      
+      # 时区配置
+      - TZ=${TZ:-Asia/Shanghai}
+      - SM_TIMEZONE=${SM_TIMEZONE:-Asia/Shanghai}
+      
+      # WOL配置
+      - SM_WOL_PORT=${SM_WOL_PORT:-9}
+      - SM_WOL_TIMEOUT=${SM_WOL_TIMEOUT:-3}
+      
+      # 任务配置
+      - SM_TASK_TIMEOUT=${SM_TASK_TIMEOUT:-300}
+      - SM_TASK_MAX_RETRIES=${SM_TASK_MAX_RETRIES:-0}
+      - SM_LOG_RETENTION_DAYS=${SM_LOG_RETENTION_DAYS:-30}
+    volumes:
+      # 数据持久化
+      - server-manager-data:/app/data
+      - server-manager-logs:/app/logs
+      
+      # 可选：挂载SSH密钥用于rsync等操作
+      # - ~/.ssh:/home/app/.ssh:ro
+      
+      # 可选：挂载自定义脚本目录
+      # - ./scripts:/app/scripts:ro
+    
+    # 网络配置，支持WOL功能
+    network_mode: "host"
+    
+    # 安全配置
+    cap_add:
+      - NET_RAW  # 用于ping功能
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  server-manager-data:
+    driver: local
+  server-manager-logs:
+    driver: local

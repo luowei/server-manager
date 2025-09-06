@@ -1,0 +1,844 @@
+// 全局变量
+let currentTab = 'devices';
+let devices = [];
+let tasks = [];
+let executions = [];
+let commandEditor = null;
+
+// DOM加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+// 初始化应用
+function initializeApp() {
+    bindEventHandlers();
+    loadSystemStatus();
+    loadCurrentTab();
+    
+    // 定期刷新系统状态
+    setInterval(loadSystemStatus, 30000);
+    
+    // 定期刷新当前标签页内容
+    setInterval(loadCurrentTab, 10000);
+}
+
+// 绑定事件处理器
+function bindEventHandlers() {
+    // 标签页切换 - 桌面端
+    document.querySelectorAll('[data-tab]').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            switchTab(this.getAttribute('data-tab'));
+        });
+    });
+    
+    // 移动端导航项点击（使用实际的选择器）
+    document.querySelectorAll('.mobile-nav [data-tab]').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            const tabName = this.getAttribute('data-tab');
+            switchTab(tabName);
+        });
+    });
+    
+    // 设备表单提交
+    document.getElementById('device-form').addEventListener('submit', handleDeviceSubmit);
+    
+    // 任务表单提交
+    document.getElementById('task-form').addEventListener('submit', handleTaskSubmit);
+    
+    // 执行记录搜索相关事件
+    const searchBtn = document.getElementById('search-executions-btn');
+    const searchInput = document.getElementById('executions-search');
+    const sortBy = document.getElementById('executions-sort-by');
+    const sortOrder = document.getElementById('executions-sort-order');
+    const limitInput = document.getElementById('executions-limit');
+    const deleteBtn = document.getElementById('delete-filtered-executions-btn');
+    const cleanupBtn = document.getElementById('cleanup-logs-btn');
+    
+    if (searchBtn) {
+        searchBtn.addEventListener('click', searchExecutions);
+    }
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                searchExecutions();
+            }
+        });
+        
+        // 监听搜索框内容变化，动态更新删除按钮文本
+        searchInput.addEventListener('input', updateDeleteButtonText);
+    }
+    if (sortBy) {
+        sortBy.addEventListener('change', loadExecutions);
+    }
+    if (sortOrder) {
+        sortOrder.addEventListener('change', loadExecutions);
+    }
+    if (limitInput) {
+        limitInput.addEventListener('change', loadExecutions);
+    }
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', deleteFilteredExecutions);
+    }
+    if (cleanupBtn) {
+        cleanupBtn.addEventListener('click', cleanupLogs);
+    }
+    
+    // 初始化CodeMirror编辑器
+    initializeCodeEditor();
+    
+    // 初始化删除按钮文本
+    updateDeleteButtonText();
+    
+}
+
+// 初始化代码编辑器
+function initializeCodeEditor() {
+    const taskCommandTextarea = document.getElementById('task-command');
+    if (taskCommandTextarea && typeof CodeMirror !== 'undefined') {
+        commandEditor = CodeMirror.fromTextArea(taskCommandTextarea, {
+            mode: 'shell',
+            lineNumbers: true,
+            lineWrapping: true,
+            autofocus: false,
+            tabSize: 2,
+            indentWithTabs: false,
+            theme: 'default',
+            extraKeys: {
+                'Ctrl-Space': 'autocomplete'
+            }
+        });
+        
+        // 设置编辑器高度
+        commandEditor.setSize(null, 120);
+    }
+}
+
+// 切换标签页
+function switchTab(tabName) {
+    // 更新桌面端导航状态
+    document.querySelectorAll('.desktop-sidebar [data-tab]').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    const desktopTab = document.querySelector(`.desktop-sidebar [data-tab="${tabName}"]`);
+    if (desktopTab) {
+        desktopTab.classList.add('active');
+    }
+    
+    // 更新移动端导航状态
+    document.querySelectorAll('.mobile-nav [data-tab]').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    const mobileTab = document.querySelector(`.mobile-nav [data-tab="${tabName}"]`);
+    if (mobileTab) {
+        mobileTab.classList.add('active');
+    }
+    
+    // 隐藏所有内容区域
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('d-none');
+    });
+    
+    // 显示当前标签页内容
+    document.getElementById(`${tabName}-content`).classList.remove('d-none');
+    
+    currentTab = tabName;
+    loadCurrentTab();
+}
+
+// 加载当前标签页内容
+function loadCurrentTab() {
+    switch(currentTab) {
+        case 'devices':
+            loadDevices();
+            break;
+        case 'tasks':
+            loadTasks();
+            break;
+        case 'executions':
+            loadExecutions();
+            break;
+        case 'system':
+            loadSystemInfo();
+            break;
+    }
+}
+
+// API请求封装
+async function apiRequest(url, options = {}) {
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            },
+            ...options
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('API请求失败:', error);
+        showAlert('请求失败: ' + error.message, 'danger');
+        throw error;
+    }
+}
+
+// 加载系统状态
+async function loadSystemStatus() {
+    try {
+        const response = await apiRequest('/api/status');
+        if (response.success) {
+            updateSystemStatus(response.data);
+        }
+    } catch (error) {
+        document.getElementById('system-status').innerHTML = 
+            '<i class="bi bi-circle-fill text-danger"></i> 系统离线';
+    }
+}
+
+// 更新系统状态显示
+function updateSystemStatus(status) {
+    const statusElement = document.getElementById('system-status');
+    if (status.scheduler_running) {
+        statusElement.innerHTML = 
+            `<i class="bi bi-circle-fill text-success"></i> 
+             调度器运行中 (${status.active_jobs}个活动任务)`;
+    } else {
+        statusElement.innerHTML = 
+            '<i class="bi bi-circle-fill text-warning"></i> 调度器已停止';
+    }
+}
+
+// WOL设备管理
+async function loadDevices() {
+    try {
+        const response = await apiRequest('/api/devices');
+        if (response.success) {
+            devices = response.data;
+            renderDevicesTable();
+        }
+    } catch (error) {
+        console.error('加载设备失败:', error);
+    }
+}
+
+function renderDevicesTable() {
+    const tbody = document.querySelector('#devices-table tbody');
+    tbody.innerHTML = '';
+    
+    devices.forEach(device => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><span class="device-status unknown" id="status-${device.id}"></span></td>
+            <td>${device.name}</td>
+            <td>${device.hostname || device.ip_address || '-'}</td>
+            <td><code>${device.mac_address}</code></td>
+            <td>${device.description || '-'}</td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-success" onclick="wakeDevice(${device.id})" title="唤醒">
+                        <i class="bi bi-power"></i>
+                    </button>
+                    <button class="btn btn-info" onclick="pingDevice(${device.id})" title="Ping">
+                        <i class="bi bi-wifi"></i>
+                    </button>
+                    <button class="btn btn-primary" onclick="editDevice(${device.id})" title="编辑">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteDevice(${device.id})" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+        
+        // 检查设备状态
+        checkDeviceStatus(device);
+    });
+}
+
+async function checkDeviceStatus(device) {
+    try {
+        const response = await apiRequest(`/api/wol/ping/${device.id}`, {method: 'POST'});
+        const statusElement = document.getElementById(`status-${device.id}`);
+        if (statusElement) {
+            statusElement.className = `device-status ${response.data.online ? 'online' : 'offline'}`;
+            statusElement.title = response.data.online ? '在线' : '离线';
+        }
+    } catch (error) {
+        console.error('检查设备状态失败:', error);
+    }
+}
+
+async function wakeDevice(deviceId) {
+    try {
+        const response = await apiRequest('/api/wol/wake', {
+            method: 'POST',
+            body: JSON.stringify({device_id: deviceId})
+        });
+        
+        if (response.success) {
+            showAlert('WOL包发送成功', 'success');
+            setTimeout(() => checkDeviceStatus(devices.find(d => d.id === deviceId)), 3000);
+        } else {
+            showAlert('WOL包发送失败: ' + response.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('唤醒设备失败', 'danger');
+    }
+}
+
+async function pingDevice(deviceId) {
+    try {
+        const response = await apiRequest(`/api/wol/ping/${deviceId}`, {method: 'POST'});
+        if (response.success) {
+            const status = response.data.online ? '在线' : '离线';
+            const alertType = response.data.online ? 'success' : 'warning';
+            showAlert(`设备状态: ${status}`, alertType);
+            
+            const statusElement = document.getElementById(`status-${deviceId}`);
+            if (statusElement) {
+                statusElement.className = `device-status ${response.data.online ? 'online' : 'offline'}`;
+            }
+        }
+    } catch (error) {
+        showAlert('Ping设备失败', 'danger');
+    }
+}
+
+function editDevice(deviceId) {
+    const device = devices.find(d => d.id === deviceId);
+    if (device) {
+        document.getElementById('device-id').value = device.id;
+        document.getElementById('device-name').value = device.name;
+        document.getElementById('device-hostname').value = device.hostname || '';
+        document.getElementById('device-ip').value = device.ip_address || '';
+        document.getElementById('device-mac').value = device.mac_address;
+        document.getElementById('device-description').value = device.description || '';
+        
+        new bootstrap.Modal(document.getElementById('deviceModal')).show();
+    }
+}
+
+async function deleteDevice(deviceId) {
+    if (confirm('确定要删除这个设备吗？')) {
+        try {
+            const response = await apiRequest(`/api/devices/${deviceId}`, {method: 'DELETE'});
+            if (response.success) {
+                showAlert('设备删除成功', 'success');
+                loadDevices();
+            }
+        } catch (error) {
+            showAlert('删除设备失败', 'danger');
+        }
+    }
+}
+
+async function handleDeviceSubmit(e) {
+    e.preventDefault();
+    
+    const deviceId = document.getElementById('device-id').value;
+    const deviceData = {
+        name: document.getElementById('device-name').value,
+        hostname: document.getElementById('device-hostname').value,
+        ip_address: document.getElementById('device-ip').value,
+        mac_address: document.getElementById('device-mac').value,
+        description: document.getElementById('device-description').value
+    };
+    
+    try {
+        let response;
+        if (deviceId) {
+            response = await apiRequest(`/api/devices/${deviceId}`, {
+                method: 'PUT',
+                body: JSON.stringify(deviceData)
+            });
+        } else {
+            response = await apiRequest('/api/devices', {
+                method: 'POST',
+                body: JSON.stringify(deviceData)
+            });
+        }
+        
+        if (response.success) {
+            showAlert(deviceId ? '设备更新成功' : '设备创建成功', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('deviceModal')).hide();
+            document.getElementById('device-form').reset();
+            loadDevices();
+        } else {
+            showAlert('操作失败: ' + response.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('操作失败', 'danger');
+    }
+}
+
+// 定时任务管理
+async function loadTasks() {
+    try {
+        const response = await apiRequest('/api/tasks');
+        if (response.success) {
+            tasks = response.data;
+            renderTasksTable();
+        }
+    } catch (error) {
+        console.error('加载任务失败:', error);
+    }
+}
+
+function renderTasksTable() {
+    const tbody = document.querySelector('#tasks-table tbody');
+    tbody.innerHTML = '';
+    
+    tasks.forEach(task => {
+        const row = document.createElement('tr');
+        const statusBadge = task.enabled ? 
+            '<span class="badge bg-success status-badge">启用</span>' : 
+            '<span class="badge bg-secondary status-badge">禁用</span>';
+        
+        const lastRun = task.last_run_at ? 
+            new Date(task.last_run_at).toLocaleString() : '-';
+        const nextRun = task.next_run_at ? 
+            new Date(task.next_run_at).toLocaleString() : '-';
+        
+        const schedule = task.cron_expression || 
+            (task.interval_seconds ? `每${task.interval_seconds}秒` : '-');
+        
+        row.innerHTML = `
+            <td>${statusBadge}</td>
+            <td>
+                <strong>${task.name}</strong>
+                ${task.description ? `<br><small class="text-muted">${task.description}</small>` : ''}
+            </td>
+            <td><span class="badge bg-info">${task.task_type}</span></td>
+            <td><code>${schedule}</code></td>
+            <td><small>${lastRun}</small></td>
+            <td><small>${nextRun}</small></td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-success" onclick="executeTask(${task.id})" title="立即执行">
+                        <i class="bi bi-play"></i>
+                    </button>
+                    <button class="btn btn-warning" onclick="toggleTask(${task.id})" title="启用/禁用">
+                        <i class="bi bi-toggle-${task.enabled ? 'on' : 'off'}"></i>
+                    </button>
+                    <button class="btn btn-info" onclick="viewTaskLogs(${task.id})" title="查看日志">
+                        <i class="bi bi-file-text"></i>
+                    </button>
+                    <button class="btn btn-primary" onclick="editTask(${task.id})" title="编辑">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteTask(${task.id})" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function executeTask(taskId) {
+    try {
+        const response = await apiRequest(`/api/tasks/${taskId}/execute`, {method: 'POST'});
+        if (response.success) {
+            showAlert('任务已开始执行', 'success');
+            setTimeout(loadTasks, 2000);
+        }
+    } catch (error) {
+        showAlert('执行任务失败', 'danger');
+    }
+}
+
+async function toggleTask(taskId) {
+    try {
+        const response = await apiRequest(`/api/tasks/${taskId}/toggle`, {method: 'POST'});
+        if (response.success) {
+            showAlert(response.message, 'success');
+            loadTasks();
+        }
+    } catch (error) {
+        showAlert('切换任务状态失败', 'danger');
+    }
+}
+
+async function viewTaskLogs(taskId) {
+    try {
+        const response = await apiRequest(`/api/tasks/${taskId}/executions`);
+        if (response.success) {
+            renderExecutionLogs(response.data);
+            new bootstrap.Modal(document.getElementById('logModal')).show();
+        }
+    } catch (error) {
+        showAlert('加载执行日志失败', 'danger');
+    }
+}
+
+function renderExecutionLogs(executions) {
+    const logContent = document.getElementById('log-content');
+    if (executions.length === 0) {
+        logContent.innerHTML = '<div class="text-center text-muted">暂无执行记录</div>';
+        return;
+    }
+    
+    let html = '';
+    executions.forEach(exec => {
+        const statusClass = getStatusClass(exec.status);
+        const duration = exec.duration_seconds ? `${exec.duration_seconds.toFixed(2)}秒` : '-';
+        const startTime = exec.started_at ? new Date(exec.started_at).toLocaleString() : '-';
+        
+        html += `
+            <div class="log-execution-item">
+                <div class="log-execution-header">
+                    <h6 class="mb-0">执行 #${exec.id}</h6>
+                    <span class="badge ${statusClass}">${exec.status}</span>
+                </div>
+                <div class="log-execution-meta">
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <strong>开始时间:</strong> ${startTime}<br>
+                            <strong>耗时:</strong> ${duration}<br>
+                            <strong>退出码:</strong> ${exec.exit_code !== null ? exec.exit_code : '-'}
+                        </div>
+                        <div class="col-sm-6">
+                            <strong>PID:</strong> ${exec.pid || '-'}<br>
+                            <strong>命令:</strong> <code style="font-size: 0.8rem;">${exec.command}</code>
+                        </div>
+                    </div>
+                </div>
+                ${exec.stdout ? `<div class="log-execution-output"><strong>输出:</strong><pre class="bg-light p-1 mt-1" style="font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px;">${exec.stdout}</pre></div>` : ''}
+                ${exec.stderr ? `<div class="log-execution-output"><strong>错误:</strong><pre class="bg-danger text-white p-1 mt-1" style="font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px;">${exec.stderr}</pre></div>` : ''}
+                ${exec.error_message ? `<div class="log-execution-output"><strong>错误信息:</strong><div class="text-danger" style="font-size: 0.8rem;">${exec.error_message}</div></div>` : ''}
+            </div>
+        `;
+    });
+    
+    logContent.innerHTML = html;
+}
+
+function editTask(taskId) {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+        document.getElementById('task-id').value = task.id;
+        document.getElementById('task-name').value = task.name;
+        document.getElementById('task-type').value = task.task_type;
+        
+        // 设置命令内容到CodeMirror编辑器或普通文本框
+        if (commandEditor) {
+            commandEditor.setValue(task.command || '');
+        } else {
+            document.getElementById('task-command').value = task.command;
+        }
+        
+        document.getElementById('task-description').value = task.description || '';
+        document.getElementById('task-cron').value = task.cron_expression || '';
+        document.getElementById('task-interval').value = task.interval_seconds || '';
+        document.getElementById('task-timeout').value = task.timeout_seconds;
+        document.getElementById('task-enabled').checked = task.enabled;
+        
+        new bootstrap.Modal(document.getElementById('taskModal')).show();
+    }
+}
+
+async function deleteTask(taskId) {
+    if (confirm('确定要删除这个任务吗？相关的执行记录也会被删除。')) {
+        try {
+            const response = await apiRequest(`/api/tasks/${taskId}`, {method: 'DELETE'});
+            if (response.success) {
+                showAlert('任务删除成功', 'success');
+                loadTasks();
+            }
+        } catch (error) {
+            showAlert('删除任务失败', 'danger');
+        }
+    }
+}
+
+async function handleTaskSubmit(e) {
+    e.preventDefault();
+    
+    const taskId = document.getElementById('task-id').value;
+    
+    // 从CodeMirror编辑器或普通文本框获取命令内容
+    let command = '';
+    if (commandEditor) {
+        command = commandEditor.getValue();
+    } else {
+        command = document.getElementById('task-command').value;
+    }
+    
+    const taskData = {
+        name: document.getElementById('task-name').value,
+        task_type: document.getElementById('task-type').value,
+        command: command,
+        description: document.getElementById('task-description').value,
+        cron_expression: document.getElementById('task-cron').value || null,
+        interval_seconds: document.getElementById('task-interval').value ? 
+            parseInt(document.getElementById('task-interval').value) : null,
+        timeout_seconds: parseInt(document.getElementById('task-timeout').value),
+        enabled: document.getElementById('task-enabled').checked
+    };
+    
+    try {
+        let response;
+        if (taskId) {
+            response = await apiRequest(`/api/tasks/${taskId}`, {
+                method: 'PUT',
+                body: JSON.stringify(taskData)
+            });
+        } else {
+            response = await apiRequest('/api/tasks', {
+                method: 'POST',
+                body: JSON.stringify(taskData)
+            });
+        }
+        
+        if (response.success) {
+            showAlert(taskId ? '任务更新成功' : '任务创建成功', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('taskModal')).hide();
+            document.getElementById('task-form').reset();
+            loadTasks();
+        } else {
+            showAlert('操作失败: ' + response.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('操作失败', 'danger');
+    }
+}
+
+
+// 执行记录管理
+async function loadExecutions() {
+    try {
+        const searchValue = document.getElementById('executions-search')?.value || '';
+        const sortBy = document.getElementById('executions-sort-by')?.value || 'created_at';
+        const sortOrder = document.getElementById('executions-sort-order')?.value || 'desc';
+        const limit = document.getElementById('executions-limit')?.value || 100;
+        
+        const params = new URLSearchParams({
+            limit: limit,
+            sort_by: sortBy,
+            sort_order: sortOrder
+        });
+        
+        if (searchValue) {
+            params.append('search', searchValue);
+        }
+        
+        const response = await apiRequest(`/api/executions?${params.toString()}`);
+        if (response.success) {
+            executions = response.data;
+            renderExecutionsTable();
+        }
+    } catch (error) {
+        console.error('加载执行记录失败:', error);
+    }
+}
+
+async function searchExecutions() {
+    await loadExecutions();
+}
+
+// 更新删除按钮文本
+function updateDeleteButtonText() {
+    const searchValue = document.getElementById('executions-search')?.value || '';
+    const deleteBtn = document.getElementById('delete-btn-text');
+    
+    if (deleteBtn) {
+        if (searchValue.trim()) {
+            deleteBtn.textContent = '删除结果';
+            document.getElementById('delete-filtered-executions-btn').title = '删除搜索结果';
+        } else {
+            deleteBtn.textContent = '清空所有';
+            document.getElementById('delete-filtered-executions-btn').title = '清空所有记录';
+        }
+    }
+}
+
+async function deleteFilteredExecutions() {
+    const searchValue = document.getElementById('executions-search')?.value || '';
+    const deleteBtn = document.getElementById('delete-btn-text');
+    const isSearchMode = searchValue.trim() !== '';
+    
+    if (!isSearchMode) {
+        // 搜索框为空时，清空所有记录
+        if (!confirm('确定要清空所有执行记录吗？这将无法撤销！')) {
+            return;
+        }
+    } else {
+        // 搜索框不为空时，删除搜索结果
+        if (!confirm(`确定要删除搜索"${searchValue}"的所有匹配记录吗？这将无法撤销！`)) {
+            return;
+        }
+    }
+    
+    try {
+        let url = '/api/executions';
+        if (isSearchMode) {
+            // 只有在搜索模式下才添加搜索参数
+            const params = new URLSearchParams();
+            params.append('search', searchValue);
+            url = `/api/executions?${params.toString()}`;
+        }
+        
+        const response = await apiRequest(url, {
+            method: 'DELETE'
+        });
+        
+        if (response.success) {
+            showAlert(response.message, 'success');
+            await loadExecutions();
+            // 如果是清空所有模式，清空搜索框并更新按钮文本
+            if (!isSearchMode) {
+                document.getElementById('executions-search').value = '';
+                updateDeleteButtonText();
+            }
+        } else {
+            showAlert('删除失败: ' + response.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('删除执行记录失败', 'danger');
+    }
+}
+
+function renderExecutionsTable() {
+    const tbody = document.querySelector('#executions-table tbody');
+    tbody.innerHTML = '';
+    
+    executions.forEach(execution => {
+        const row = document.createElement('tr');
+        const statusBadge = `<span class="badge ${getStatusClass(execution.status)} status-badge">${execution.status}</span>`;
+        const startTime = execution.started_at ? 
+            new Date(execution.started_at).toLocaleString() : '-';
+        const duration = execution.duration_seconds ? 
+            `${execution.duration_seconds.toFixed(2)}秒` : '-';
+        
+        row.innerHTML = `
+            <td>${execution.task_name}</td>
+            <td>${statusBadge}</td>
+            <td><small>${startTime}</small></td>
+            <td><small>${duration}</small></td>
+            <td><code>${execution.exit_code !== null ? execution.exit_code : '-'}</code></td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="viewExecutionLog(${execution.id})" title="查看日志">
+                    <i class="bi bi-file-text"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function viewExecutionLog(executionId) {
+    const execution = executions.find(e => e.id === executionId);
+    if (execution) {
+        renderExecutionLogs([execution]);
+        new bootstrap.Modal(document.getElementById('logModal')).show();
+    }
+}
+
+// 系统信息
+async function loadSystemInfo() {
+    try {
+        const response = await apiRequest('/api/status');
+        if (response.success) {
+            renderSystemInfo(response.data);
+        }
+    } catch (error) {
+        console.error('加载系统信息失败:', error);
+    }
+}
+
+function renderSystemInfo(status) {
+    const systemInfo = document.getElementById('system-info');
+    systemInfo.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>调度器状态:</strong> 
+                    <span class="badge ${status.scheduler_running ? 'bg-success' : 'bg-danger'}">
+                        ${status.scheduler_running ? '运行中' : '已停止'}
+                    </span>
+                </p>
+                <p><strong>活动任务:</strong> ${status.active_jobs}</p>
+                <p><strong>设备数量:</strong> ${status.device_count}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>任务总数:</strong> ${status.task_count}</p>
+                <p><strong>启用任务:</strong> ${status.enabled_task_count}</p>
+            </div>
+        </div>
+    `;
+}
+
+// 系统维护
+async function cleanupLogs() {
+    if (confirm('确定要清理30天前的执行记录吗？')) {
+        try {
+            const response = await apiRequest('/api/maintenance/cleanup', {method: 'POST'});
+            if (response.success) {
+                showAlert('日志清理成功', 'success');
+                if (currentTab === 'executions') {
+                    loadExecutions();
+                }
+            }
+        } catch (error) {
+            showAlert('日志清理失败', 'danger');
+        }
+    }
+}
+
+// 工具函数
+function getStatusClass(status) {
+    const statusClasses = {
+        'pending': 'bg-secondary',
+        'running': 'bg-primary',
+        'completed': 'bg-success',
+        'failed': 'bg-danger',
+        'cancelled': 'bg-warning'
+    };
+    return statusClasses[status] || 'bg-secondary';
+}
+
+function showAlert(message, type = 'info') {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show position-fixed" 
+             style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', alertHtml);
+    
+    // 自动隐藏
+    setTimeout(() => {
+        const alerts = document.querySelectorAll('.alert');
+        if (alerts.length > 0) {
+            alerts[alerts.length - 1].remove();
+        }
+    }, 5000);
+}
+
+// 清空模态框表单
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('hidden.bs.modal', function () {
+        const forms = this.querySelectorAll('form');
+        forms.forEach(form => form.reset());
+        
+        // 清空隐藏的ID字段
+        const idFields = this.querySelectorAll('input[type="hidden"]');
+        idFields.forEach(field => field.value = '');
+        
+        // 如果是任务模态框，清空CodeMirror编辑器
+        if (this.id === 'taskModal' && commandEditor) {
+            commandEditor.setValue('');
+        }
+    });
+});
