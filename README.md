@@ -52,6 +52,34 @@
 
 #### 使用 Docker 直接运行
 
+**方式1: 使用预构建镜像 (推荐)**
+
+```bash
+# 使用GitHub Container Registry
+docker run -d \
+  --name server-manager \
+  --network host \
+  --cap-add NET_RAW \
+  -e SM_PORT=8000 \
+  -e TZ=Asia/Shanghai \
+  -v server-manager-data:/app/data \
+  -v server-manager-logs:/app/logs \
+  ghcr.io/username/server-manager:latest
+
+# 或使用Docker Hub
+docker run -d \
+  --name server-manager \
+  --network host \
+  --cap-add NET_RAW \
+  -e SM_PORT=8000 \
+  -e TZ=Asia/Shanghai \
+  -v server-manager-data:/app/data \
+  -v server-manager-logs:/app/logs \
+  username/server-manager:latest
+```
+
+**方式2: 本地构建镜像**
+
 1. 克隆项目
 ```bash
 git clone <项目地址>
@@ -403,6 +431,39 @@ python main.py --reload --log-level DEBUG
 - `app/scheduler.py`: 任务调度和执行
 - `app/api.py`: Web API路由
 - `app/storage.py`: 自定义YAML存储
+
+### CI/CD 流程
+
+项目配置了完整的GitHub Actions工作流：
+
+#### 🔄 自动化流程
+- **CI检查** (`ci.yml`): 代码质量检查、安全扫描、多Python版本测试
+- **Docker构建** (`docker-build.yml`): 自动构建和发布Docker镜像
+- **发布流程** (`release.yml`): Release时自动发布并生成部署文件
+
+#### 🏗️ 构建和发布
+```bash
+# 触发Docker镜像构建和发布
+git tag -a v1.2.1 -m "Release version 1.2.1"
+git push origin v1.2.1
+
+# 创建GitHub Release会自动：
+# 1. 构建多架构Docker镜像 (amd64, arm64)
+# 2. 发布到GitHub Container Registry和Docker Hub
+# 3. 生成docker-compose.yml和部署脚本
+```
+
+#### 📦 镜像仓库
+- **GitHub Container Registry**: `ghcr.io/username/server-manager`
+- **Docker Hub**: `username/server-manager`
+
+#### 🔧 开发工作流
+1. 提交PR触发CI检查
+2. 合并到main分支构建latest镜像  
+3. 创建Release标签发布稳定版本
+4. 自动生成部署文件和脚本
+
+更多详细配置说明请参考：[Docker Hub 自动发布设置指南](DOCKER_HUB_SETUP.md)
 
 ## 许可证
 

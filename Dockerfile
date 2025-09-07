@@ -1,12 +1,27 @@
 # 使用Python 3.10作为基础镜像
 FROM python:3.10-slim
 
+# 构建参数
+ARG BUILDTIME
+ARG VERSION
+ARG REVISION
+
 # 设置工作目录
 WORKDIR /app
 
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# 添加镜像标签
+LABEL org.opencontainers.image.title="Server Manager" \
+      org.opencontainers.image.description="基于FastAPI的Web应用，提供局域网唤醒(WOL)和定时任务管理功能" \
+      org.opencontainers.image.created="${BUILDTIME}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.vendor="Claude AI Assistant" \
+      org.opencontainers.image.licenses="MIT" \
+      maintainer="Claude AI Assistant"
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
