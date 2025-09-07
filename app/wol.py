@@ -145,7 +145,75 @@ class WOLManager:
     @staticmethod
     def ping_host(hostname_or_ip: str, timeout: int = 3) -> bool:
         """
-        Ping主机检查是否在线
+        Ping主机检查是否在线（兼容Docker容器环境）
+        
+        Args:
+            hostname_or_ip: 主机名或IP地址
+            timeout: 超时时间（秒）
+            
+        Returns:
+            主机是否在线
+        """
+        # 首先尝试TCP连接检查（适用于Docker环境）
+        if WOLManager.tcp_ping(hostname_or_ip, timeout):
+            return True
+        
+        # 然后尝试传统ICMP ping
+        return WOLManager.icmp_ping(hostname_or_ip, timeout)
+    
+    @staticmethod
+    def tcp_ping(hostname_or_ip: str, timeout: int = 3) -> bool:
+        """
+        使用TCP连接检查主机是否在线（Docker友好）
+        
+        Args:
+            hostname_or_ip: 主机名或IP地址
+            timeout: 超时时间（秒）
+            
+        Returns:
+            主机是否在线
+        """
+        import socket
+        
+        # 常见端口列表，用于检测主机是否在线
+        common_ports = [22, 23, 53, 80, 135, 139, 443, 445, 993, 995, 3389, 5900]
+        
+        try:
+            # 先解析主机名到IP地址
+            try:
+                target_ip = socket.gethostbyname(hostname_or_ip)
+                logger.debug(f"解析 {hostname_or_ip} -> {target_ip}")
+            except socket.gaierror:
+                logger.debug(f"无法解析主机名: {hostname_or_ip}")
+                return False
+            
+            # 尝试连接常见端口
+            for port in common_ports:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(timeout / len(common_ports))  # 分配超时时间
+                    result = sock.connect_ex((target_ip, port))
+                    sock.close()
+                    
+                    if result == 0:
+                        logger.debug(f"TCP连接成功: {hostname_or_ip}:{port}")
+                        return True
+                        
+                except Exception as e:
+                    logger.debug(f"TCP连接失败 {hostname_or_ip}:{port} - {e}")
+                    continue
+            
+            logger.debug(f"所有TCP端口连接失败: {hostname_or_ip}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"TCP ping失败: {e}")
+            return False
+    
+    @staticmethod
+    def icmp_ping(hostname_or_ip: str, timeout: int = 3) -> bool:
+        """
+        传统ICMP ping检查
         
         Args:
             hostname_or_ip: 主机名或IP地址
@@ -167,10 +235,17 @@ class WOLManager:
             
             # 执行ping命令
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 1)
-            return result.returncode == 0
+            success = result.returncode == 0
+            
+            if success:
+                logger.debug(f"ICMP ping成功: {hostname_or_ip}")
+            else:
+                logger.debug(f"ICMP ping失败: {hostname_or_ip}")
+                
+            return success
             
         except Exception as e:
-            logger.error(f"Ping主机失败: {e}")
+            logger.error(f"ICMP ping失败: {e}")
             return False
     
     @staticmethod

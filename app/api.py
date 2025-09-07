@@ -174,7 +174,20 @@ class ServerManagerAPI:
                 if not device:
                     return ApiResponse(success=False, message="设备不存在")
                 
-                target = device.hostname or device.ip_address
+                # 按优先级确定ping目标：mDNS主机名 -> 普通主机名 -> IP地址/CIDR
+                target = None
+                
+                # 优先使用主机名（包括mDNS）
+                if device.hostname:
+                    target = device.hostname
+                # 如果没有主机名，使用IP地址
+                elif device.ip_address:
+                    # 如果是CIDR格式，提取IP地址部分
+                    if '/' in device.ip_address:
+                        target = device.ip_address.split('/')[0]
+                    else:
+                        target = device.ip_address
+                
                 if not target:
                     return ApiResponse(success=False, message="设备无主机名或IP地址")
                 

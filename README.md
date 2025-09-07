@@ -13,6 +13,7 @@
 - 🆕 智能主机名/IP显示逻辑，支持mDNS格式(.local, .lan)
 - 🆕 设备地址类型视觉区分(mDNS、普通主机名、IP地址)
 - 🆕 CIDR格式IP地址智能处理
+- 🆕 Docker容器友好的ping实现，解决容器权限问题
 
 ### 定时任务管理
 - 支持Shell脚本任务执行，带语法高亮编辑器
@@ -55,22 +56,30 @@
 **方式1: 使用预构建镜像 (推荐)**
 
 ```bash
-# 使用GitHub Container Registry
+# 使用GitHub Container Registry (Host网络模式)
 docker run -d \
   --name server-manager \
   --network host \
   --cap-add NET_RAW \
+  --cap-add NET_ADMIN \
+  --dns 8.8.8.8 \
+  --dns 1.1.1.1 \
+  --add-host host.docker.internal:host-gateway \
   -e SM_PORT=8000 \
   -e TZ=Asia/Shanghai \
   -v server-manager-data:/app/data \
   -v server-manager-logs:/app/logs \
   ghcr.io/username/server-manager:latest
 
-# 或使用Docker Hub
+# 或使用Docker Hub (Host网络模式)
 docker run -d \
   --name server-manager \
   --network host \
   --cap-add NET_RAW \
+  --cap-add NET_ADMIN \
+  --dns 8.8.8.8 \
+  --dns 1.1.1.1 \
+  --add-host host.docker.internal:host-gateway \
   -e SM_PORT=8000 \
   -e TZ=Asia/Shanghai \
   -v server-manager-data:/app/data \
@@ -91,23 +100,31 @@ cd server_manager
 docker build -t server-manager .
 ```
 
-3. 运行 Docker 容器 (推荐使用 host 网络支持 WOL 功能)
+3. 运行 Docker 容器
 ```bash
-# 基本运行
+# 推荐方式：Host网络模式 (完整WOL功能支持)
 docker run -d \
   --name server-manager \
   --network host \
   --cap-add NET_RAW \
+  --cap-add NET_ADMIN \
+  --dns 8.8.8.8 \
+  --dns 1.1.1.1 \
+  --add-host host.docker.internal:host-gateway \
   -e SM_PORT=8000 \
   -e TZ=Asia/Shanghai \
   -v server-manager-data:/app/data \
   -v server-manager-logs:/app/logs \
   server-manager
 
-# 或者使用端口映射模式 (WOL 功能可能受限)
+# 备选方式：Bridge网络模式 (基础功能)
 docker run -d \
   --name server-manager \
   -p 8000:8000 \
+  --cap-add NET_RAW \
+  --dns 8.8.8.8 \
+  --dns 1.1.1.1 \
+  --add-host host.docker.internal:host-gateway \
   -e SM_PORT=8000 \
   -e TZ=Asia/Shanghai \
   -v server-manager-data:/app/data \
@@ -151,9 +168,13 @@ cp .env.example .env
 # 编辑 .env 文件，根据需要修改配置
 ```
 
-3. 使用 docker-compose 启动
+3. 选择合适的docker-compose文件
 ```bash
+# 方式1: Host网络模式 (推荐，完整WOL功能)
 docker-compose up -d
+
+# 方式2: Bridge网络模式 (兼容性好)
+docker-compose -f docker-compose.bridge.yml up -d
 ```
 
 4. 访问应用
@@ -231,11 +252,15 @@ SM_LOG_RETENTION_DAYS=30       # 日志保留天数
 # 构建镜像
 docker build -t server-manager .
 
-# 运行容器 (使用host网络支持WOL)
+# 运行容器 (Host网络模式，推荐)
 docker run -d \
   --name server-manager \
   --network host \
   --cap-add NET_RAW \
+  --cap-add NET_ADMIN \
+  --dns 8.8.8.8 \
+  --dns 1.1.1.1 \
+  --add-host host.docker.internal:host-gateway \
   -e SM_PORT=8000 \
   -e TZ=Asia/Shanghai \
   -v server-manager-data:/app/data \
@@ -394,10 +419,26 @@ server_manager/
    - 查看执行日志中的错误信息
    - 确认超时时间设置合理
 
-3. **无法访问Web界面**
+3. **Docker容器中ping失败**
+   - 使用Host网络模式：`--network host`
+   - 添加必要权限：`--cap-add NET_RAW --cap-add NET_ADMIN`
+   - 配置DNS服务器：`--dns 8.8.8.8 --dns 1.1.1.1`
+   - 对于mDNS解析问题，系统会自动回退到TCP端口检测
+
+4. **任务执行失败**
+   - 检查命令路径和权限
+   - 查看执行日志中的错误信息
+   - 确认超时时间设置合理
+
+5. **无法访问Web界面**
    - 检查防火墙设置
    - 确认端口没有被其他程序占用
    - 查看应用启动日志
+
+6. **设备状态显示为离线但实际在线**
+   - 检查设备是否开放常见端口(22,80,443等)
+   - 确认网络配置允许容器访问目标设备
+   - 查看应用日志中的ping调试信息
 
 ### 日志查看
 
@@ -471,7 +512,19 @@ MIT License
 
 ## 更新日志
 
-### v1.2.1 (2025-09-07) 🆕
+### v1.2.2 (2025-09-07) 🆕
+**Docker容器化增强：**
+- 🐳 修复Docker容器中ping权限问题，支持mDNS解析
+- 🔧 新增TCP端口检测作为ping备选方案，提升容器兼容性
+- 📡 改进Docker网络配置，支持Host和Bridge两种部署模式
+- 🛠️ 提供多种Docker Compose配置文件适应不同环境
+
+**设备状态检测优化：**
+- ⚡ 智能ping策略：优先TCP端口检测，回退ICMP ping
+- 🌐 增强mDNS域名解析支持
+- 📊 完善Docker容器权限配置文档
+
+### v1.2.1 (2025-09-07)
 **Bug修复与功能增强：**
 - 🖥️ 网站favicon更新为Unicode桌面电脑图标 (🖥️)
 - 📊 修复系统状态中磁盘使用率计算错误

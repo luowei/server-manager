@@ -5,6 +5,10 @@ let tasks = [];
 let executions = [];
 let commandEditor = null;
 
+// 设备状态跟踪
+let deviceStatusHistory = {}; // 记录每个设备的状态历史
+let deviceFailureCount = {}; // 记录每个设备的连续失败次数
+
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -20,7 +24,7 @@ function initializeApp() {
     setInterval(loadSystemStatus, 30000);
     
     // 定期刷新当前标签页内容
-    setInterval(loadCurrentTab, 10000);
+    setInterval(loadCurrentTab, 3000);
 }
 
 // 绑定事件处理器
@@ -304,12 +308,62 @@ async function checkDeviceStatus(device) {
     try {
         const response = await apiRequest(`/api/wol/ping/${device.id}`, {method: 'POST'});
         const statusElement = document.getElementById(`status-${device.id}`);
-        if (statusElement) {
-            statusElement.className = `device-status ${response.data.online ? 'online' : 'offline'}`;
-            statusElement.title = response.data.online ? '在线' : '离线';
+        if (!statusElement) return;
+        
+        const deviceId = device.id;
+        const currentOnline = response.data.online;
+        
+        // 初始化设备状态跟踪
+        if (!deviceStatusHistory[deviceId]) {
+            deviceStatusHistory[deviceId] = 'unknown';
+            deviceFailureCount[deviceId] = 0;
         }
+        
+        // 获取之前的状态
+        const previousStatus = deviceStatusHistory[deviceId];
+        let newStatus = currentOnline ? 'online' : 'offline';
+        
+        if (currentOnline) {
+            // 设备在线：重置失败计数，直接更新为在线
+            deviceFailureCount[deviceId] = 0;
+            deviceStatusHistory[deviceId] = 'online';
+            statusElement.className = 'device-status online';
+            statusElement.title = '在线';
+        } else {
+            // 设备离线：增加失败计数
+            deviceFailureCount[deviceId]++;
+            
+            if (previousStatus === 'online') {
+                // 从在线变为离线：需要连续3次失败才显示为离线
+                if (deviceFailureCount[deviceId] >= 3) {
+                    deviceStatusHistory[deviceId] = 'offline';
+                    statusElement.className = 'device-status offline';
+                    statusElement.title = '离线';
+                } else {
+                    // 保持在线状态，但显示为pending表示正在检测
+                    statusElement.className = 'device-status pending';
+                    statusElement.title = `检测中 (${deviceFailureCount[deviceId]}/3)`;
+                }
+            } else if (previousStatus === 'unknown') {
+                // 初次检测到离线：直接显示为离线
+                deviceStatusHistory[deviceId] = 'offline';
+                statusElement.className = 'device-status offline';
+                statusElement.title = '离线';
+            } else {
+                // 已经是离线状态：保持离线
+                statusElement.className = 'device-status offline';
+                statusElement.title = '离线';
+            }
+        }
+        
     } catch (error) {
         console.error('检查设备状态失败:', error);
+        // 网络错误时显示为未知状态
+        const statusElement = document.getElementById(`status-${device.id}`);
+        if (statusElement) {
+            statusElement.className = 'device-status unknown';
+            statusElement.title = '检测失败';
+        }
     }
 }
 

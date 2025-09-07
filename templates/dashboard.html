@@ -42,6 +42,15 @@
         .unknown {
             background-color: #6c757d;
         }
+        .pending {
+            background-color: #ffc107;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
         
         /* 移动端优化 */
         @media (max-width: 768px) {

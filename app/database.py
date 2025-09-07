@@ -1,10 +1,14 @@
 import os
+import logging
 from datetime import datetime
 from tinydb import TinyDB, Query
 from tinydb.operations import increment
 from typing import List, Optional, Dict, Any
 from .storage import YAMLStorage
 from .models import WOLDevice, ScheduledTask, TaskExecution, TaskStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
@@ -285,12 +289,24 @@ class DatabaseManager:
         
         for exec_dict in results[:limit]:
             exec_dict = exec_dict.copy()
-            exec_dict['created_at'] = self._parse_datetime(exec_dict['created_at'])
+            
+            # 确保created_at字段存在
+            if 'created_at' in exec_dict:
+                exec_dict['created_at'] = self._parse_datetime(exec_dict['created_at'])
+            else:
+                # 如果缺少created_at，使用当前时间
+                exec_dict['created_at'] = datetime.now()
+                
             if exec_dict.get('started_at'):
                 exec_dict['started_at'] = self._parse_datetime(exec_dict['started_at'])
             if exec_dict.get('completed_at'):
                 exec_dict['completed_at'] = self._parse_datetime(exec_dict['completed_at'])
-            executions.append(TaskExecution(**exec_dict))
+            
+            try:
+                executions.append(TaskExecution(**exec_dict))
+            except Exception as e:
+                logger.error(f"解析执行记录失败: {e}, 记录: {exec_dict}")
+                continue
         return executions
     
     def delete_executions_by_filter(
