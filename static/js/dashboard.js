@@ -549,7 +549,7 @@ function renderExecutionLogs(executions) {
                         </div>
                         <div class="col-sm-6">
                             <strong>PID:</strong> ${exec.pid || '-'}<br>
-                            <strong>命令:</strong> <code style="font-size: 0.8rem;">${exec.command}</code>
+                            <strong>命令:</strong><br><pre class="bg-light p-2 mt-1" style="font-size: 0.8rem; line-height: 1.3; margin-bottom: 4px; white-space: pre-wrap; word-break: break-all;">${exec.command}</pre>
                         </div>
                     </div>
                 </div>
@@ -563,19 +563,43 @@ function renderExecutionLogs(executions) {
     logContent.innerHTML = html;
 }
 
+function createNewTask() {
+    // 清空当前任务数据
+    window.currentEditingTask = null;
+    
+    // 重置表单字段
+    document.getElementById('task-id').value = '';
+    document.getElementById('task-name').value = '';
+    document.getElementById('task-type').value = 'shell';
+    document.getElementById('task-command').value = '';
+    document.getElementById('task-description').value = '';
+    document.getElementById('task-cron').value = '';
+    document.getElementById('task-interval').value = '';
+    document.getElementById('task-timeout').value = '300';
+    document.getElementById('task-enabled').checked = true;
+    
+    // 如果CodeMirror已初始化，也清空编辑器内容
+    if (commandEditor) {
+        commandEditor.setValue('');
+    }
+    
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('taskModal'));
+    modal.show();
+}
+
 function editTask(taskId) {
     const task = tasks.find(t => t.id === taskId);
     if (task) {
+        // 存储当前任务数据供模态框事件使用
+        window.currentEditingTask = task;
+        
         document.getElementById('task-id').value = task.id;
         document.getElementById('task-name').value = task.name;
         document.getElementById('task-type').value = task.task_type;
         
-        // 设置命令内容到CodeMirror编辑器或普通文本框
-        if (commandEditor) {
-            commandEditor.setValue(task.command || '');
-        } else {
-            document.getElementById('task-command').value = task.command;
-        }
+        // 先设置普通文本框的值
+        document.getElementById('task-command').value = task.command || '';
         
         document.getElementById('task-description').value = task.description || '';
         document.getElementById('task-cron').value = task.cron_expression || '';
@@ -583,7 +607,9 @@ function editTask(taskId) {
         document.getElementById('task-timeout').value = task.timeout_seconds;
         document.getElementById('task-enabled').checked = task.enabled;
         
-        new bootstrap.Modal(document.getElementById('taskModal')).show();
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('taskModal'));
+        modal.show();
     }
 }
 
@@ -614,26 +640,51 @@ async function handleTaskSubmit(e) {
         command = document.getElementById('task-command').value;
     }
     
+    // 手动验证必填字段（避免浏览器聚焦到隐藏的textarea）
+    const taskName = document.getElementById('task-name').value.trim();
+    if (!taskName) {
+        showAlert('请输入任务名称', 'warning');
+        document.getElementById('task-name').focus();
+        return;
+    }
+    
+    if (!command || command.trim() === '') {
+        showAlert('请输入任务命令', 'warning');
+        if (commandEditor) {
+            commandEditor.focus();
+        } else {
+            document.getElementById('task-command').focus();
+        }
+        return;
+    }
+    
     const taskData = {
-        name: document.getElementById('task-name').value,
+        name: taskName,
         task_type: document.getElementById('task-type').value,
-        command: command,
+        command: command.trim(),
         description: document.getElementById('task-description').value,
         cron_expression: document.getElementById('task-cron').value || null,
         interval_seconds: document.getElementById('task-interval').value ? 
             parseInt(document.getElementById('task-interval').value) : null,
         timeout_seconds: parseInt(document.getElementById('task-timeout').value),
+        max_retries: 0,
         enabled: document.getElementById('task-enabled').checked
     };
+    
+    // Debug logging
+    console.log('Task data being sent:', JSON.stringify(taskData, null, 2));
+    console.log('Task ID:', taskId);
     
     try {
         let response;
         if (taskId) {
+            console.log('Sending PUT request to update task');
             response = await apiRequest(`/api/tasks/${taskId}`, {
                 method: 'PUT',
                 body: JSON.stringify(taskData)
             });
         } else {
+            console.log('Sending POST request to create task');
             response = await apiRequest('/api/tasks', {
                 method: 'POST',
                 body: JSON.stringify(taskData)
@@ -1116,6 +1167,15 @@ function showAlert(message, type = 'info') {
 
 // 清空模态框表单
 document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('shown.bs.modal', function () {
+        // 如果是任务模态框且有正在编辑的任务，设置CodeMirror内容
+        if (this.id === 'taskModal' && window.currentEditingTask && commandEditor) {
+            commandEditor.setValue(window.currentEditingTask.command || '');
+            commandEditor.refresh(); // 强制刷新显示
+            commandEditor.focus(); // 设置焦点
+        }
+    });
+    
     modal.addEventListener('hidden.bs.modal', function () {
         const forms = this.querySelectorAll('form');
         forms.forEach(form => form.reset());
@@ -1124,9 +1184,12 @@ document.querySelectorAll('.modal').forEach(modal => {
         const idFields = this.querySelectorAll('input[type="hidden"]');
         idFields.forEach(field => field.value = '');
         
-        // 如果是任务模态框，清空CodeMirror编辑器
-        if (this.id === 'taskModal' && commandEditor) {
-            commandEditor.setValue('');
+        // 如果是任务模态框，清空CodeMirror编辑器和当前编辑任务
+        if (this.id === 'taskModal') {
+            if (commandEditor) {
+                commandEditor.setValue('');
+            }
+            window.currentEditingTask = null;
         }
     });
 });

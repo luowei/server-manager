@@ -191,8 +191,23 @@ class ServerManagerAPI:
         
         # 定时任务管理API
         @self.app.post("/api/tasks", response_model=ApiResponse)
-        async def create_task(task_data: TaskCreateRequest):
+        async def create_task(request: Request):
             try:
+                # 先获取原始请求数据进行调试
+                request_body = await request.body()
+                logger.info(f"创建任务请求数据: {request_body.decode()}")
+                
+                # 解析为TaskCreateRequest模型
+                import json
+                from pydantic import ValidationError
+                try:
+                    raw_data = json.loads(request_body.decode())
+                    task_data = TaskCreateRequest(**raw_data)
+                    logger.info(f"解析后的任务数据: {task_data.dict()}")
+                except ValidationError as ve:
+                    logger.error(f"任务数据验证失败: {ve}")
+                    return ApiResponse(success=False, message=f"数据验证失败: {ve}")
+                
                 task = ScheduledTask(**task_data.dict())
                 task = self.db_manager.create_task(task)
                 
