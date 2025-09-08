@@ -7,25 +7,42 @@
     <title>服务器管理系统</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖥️</text></svg>"
     >
-    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
-    <link href="/static/css/codemirror/codemirror.css" rel="stylesheet">
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet" media="all">
+    <link href="/static/css/bootstrap-icons.css" rel="stylesheet" media="all">
+    <link href="/static/css/codemirror/codemirror.css" rel="stylesheet" media="all">
+    <link href="/static/css/themes.css" rel="stylesheet" media="all">
     <style>
-        .card-header {
-            background-color: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
         }
+        
+        .card {
+            background-color: var(--card-bg);
+            border-color: var(--card-border);
+        }
+        
+        .card-header {
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
         .status-badge {
             font-size: 0.75rem;
         }
+        
         .log-output {
-            background-color: #f8f9fa;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
             font-family: 'Courier New', monospace;
             font-size: 0.85rem;
             max-height: 300px;
             overflow-y: auto;
             white-space: pre-wrap;
+            border: 1px solid var(--border-color);
         }
+        
         .device-status {
             width: 12px;
             height: 12px;
@@ -33,18 +50,96 @@
             display: inline-block;
             margin-right: 5px;
         }
+        
         .online {
-            background-color: #28a745;
+            background-color: var(--success-color);
         }
+        
         .offline {
-            background-color: #dc3545;
+            background-color: var(--danger-color);
         }
+        
         .unknown {
-            background-color: #6c757d;
+            background-color: var(--text-secondary);
         }
+        
         .pending {
-            background-color: #ffc107;
+            background-color: var(--warning-color);
             animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .form-control {
+            background-color: var(--input-bg);
+            border-color: var(--input-border);
+            color: var(--text-primary);
+        }
+        
+        .form-control:focus {
+            background-color: var(--input-bg);
+            border-color: var(--input-focus);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: var(--btn-primary);
+            border-color: var(--btn-primary);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--btn-primary-hover);
+            border-color: var(--btn-primary-hover);
+        }
+        
+        .btn-success {
+            background-color: var(--btn-success);
+            border-color: var(--btn-success);
+        }
+        
+        .btn-success:hover {
+            background-color: var(--btn-success-hover);
+            border-color: var(--btn-success-hover);
+        }
+        
+        .btn-danger {
+            background-color: var(--btn-danger);
+            border-color: var(--btn-danger);
+        }
+        
+        .btn-danger:hover {
+            background-color: var(--btn-danger-hover);
+            border-color: var(--btn-danger-hover);
+        }
+        
+        .table {
+            color: var(--text-primary);
+        }
+        
+        .table-striped > tbody > tr:nth-of-type(odd) > td,
+        .table-striped > tbody > tr:nth-of-type(odd) > th {
+            background-color: var(--table-accent-bg);
+        }
+        
+        .table-hover > tbody > tr:hover > td,
+        .table-hover > tbody > tr:hover > th {
+            background-color: var(--table-hover-bg);
+        }
+        
+        .table td, .table th {
+            border-top-color: var(--table-border);
+        }
+        
+        .navbar-dark {
+            background-color: var(--navbar-bg) !important;
+        }
+        
+        .navbar-dark .navbar-brand,
+        .navbar-dark .navbar-nav .nav-link {
+            color: var(--navbar-text) !important;
+        }
+        
+        .navbar-dark .navbar-text {
+            color: var(--navbar-link) !important;
         }
         
         @keyframes pulse {
@@ -69,8 +164,8 @@
                 left: 0;
                 right: 0;
                 z-index: 1000;
-                background: white;
-                border-bottom: 1px solid #dee2e6;
+                background: var(--bg-color);
+                border-bottom: 1px solid var(--border-color);
                 padding: 8px 10px;
             }
             
@@ -89,16 +184,22 @@
             .mobile-nav-tabs .nav-link {
                 padding: 8px 12px;
                 font-size: 0.85rem;
-                color: #495057;
+                color: var(--text-secondary);
                 text-decoration: none;
                 border-radius: 4px;
                 margin-right: 8px;
                 min-width: fit-content;
+                transition: background-color 0.3s ease, color 0.3s ease;
             }
             
             .mobile-nav-tabs .nav-link.active {
-                background-color: #007bff;
+                background-color: var(--btn-primary);
                 color: white;
+            }
+            
+            .mobile-nav-tabs .nav-link:hover:not(.active) {
+                background-color: var(--bg-secondary);
+                color: var(--text-primary);
             }
             
             .mobile-content {
@@ -174,7 +275,7 @@
         }
         
         .log-execution-item {
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-color);
             margin-bottom: 8px;
             padding-bottom: 8px;
         }
@@ -233,6 +334,16 @@
                 <i class="bi bi-server"></i> 服务器管理系统
             </a>
             <div class="navbar-nav ms-auto">
+                <!-- 主题切换选择器 -->
+                <div class="d-flex align-items-center me-3">
+                    <i class="bi bi-palette theme-icon me-2"></i>
+                    <select id="theme-selector" class="form-select form-select-sm theme-selector">
+                        <option value="auto">🔄 跟随系统</option>
+                        <option value="light">☀️ 亮色主题</option>
+                        <option value="dark">🌙 暗色主题</option>
+                    </select>
+                </div>
+                
                 <span class="navbar-text" id="system-status">
                     <i class="bi bi-circle-fill text-success"></i> 系统运行中
                 </span>
@@ -581,9 +692,10 @@
     </div>
 
     <!-- 包含JavaScript -->
-    <script src="/static/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/codemirror/codemirror.js"></script>
-    <script src="/static/js/codemirror/shell.js"></script>
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/bootstrap.bundle.min.js" defer></script>
+    <script src="/static/js/codemirror/codemirror.js" defer></script>
+    <script src="/static/js/codemirror/shell.js" defer></script>
+    <script src="/static/js/theme.js" defer></script>
+    <script src="/static/js/dashboard.js" defer></script>
 </body>
 </html>

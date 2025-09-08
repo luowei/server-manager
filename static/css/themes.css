@@ -1,0 +1,418 @@
+/* 主题系统 - CSS变量定义 */
+
+:root,
+[data-theme="light"] {
+    /* 亮色主题颜色 */
+    --bg-color: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #888888;
+    --border-color: #dee2e6;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --shadow-hover: rgba(0, 0, 0, 0.15);
+    
+    /* 状态颜色 */
+    --success-color: #28a745;
+    --success-bg: #d4edda;
+    --success-border: #c3e6cb;
+    --danger-color: #dc3545;
+    --danger-bg: #f8d7da;
+    --danger-border: #f5c6cb;
+    --warning-color: #ffc107;
+    --warning-bg: #fff3cd;
+    --warning-border: #ffeaa7;
+    --info-color: #17a2b8;
+    --info-bg: #d1ecf1;
+    --info-border: #bee5eb;
+    --primary-color: #007bff;
+    --primary-bg: #cce5ff;
+    --primary-border: #b3d9ff;
+    
+    /* 输入框和按钮 */
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+    --input-focus: #80bdff;
+    --btn-primary: #007bff;
+    --btn-primary-hover: #0056b3;
+    --btn-secondary: #6c757d;
+    --btn-secondary-hover: #545b62;
+    --btn-success: #28a745;
+    --btn-success-hover: #1e7e34;
+    --btn-danger: #dc3545;
+    --btn-danger-hover: #c82333;
+    --btn-warning: #ffc107;
+    --btn-warning-hover: #e0a800;
+    
+    /* 卡片和容器 */
+    --card-bg: #ffffff;
+    --card-border: #e3e6ea;
+    --navbar-bg: #343a40;
+    --navbar-text: #ffffff;
+    --navbar-link: #rgba(255, 255, 255, 0.75);
+    --navbar-link-hover: #ffffff;
+    
+    /* 表格 */
+    --table-bg: transparent;
+    --table-accent-bg: #f8f9fa;
+    --table-hover-bg: #e8f4fd;
+    --table-border: #dee2e6;
+    
+    /* 进度条 */
+    --progress-bg: #e9ecef;
+    --progress-bar: #007bff;
+    
+    /* 主题切换开关 */
+    --switch-bg: #ccc;
+    --switch-handle: #fff;
+    --switch-active-bg: #007bff;
+}
+
+/* 暗色主题 */
+[data-theme="dark"] {
+    /* 背景色 */
+    --bg-color: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --bg-tertiary: #3d3d3d;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0b0;
+    --text-muted: #888888;
+    --border-color: #404040;
+    --shadow: rgba(255, 255, 255, 0.1);
+    --shadow-hover: rgba(255, 255, 255, 0.15);
+    
+    /* 状态颜色 - 暗色主题下稍微调整 */
+    --success-color: #40c057;
+    --success-bg: #1b4332;
+    --success-border: #2d6a4f;
+    --danger-color: #ff6b6b;
+    --danger-bg: #4c1d1d;
+    --danger-border: #6b2c2c;
+    --warning-color: #ffd43b;
+    --warning-bg: #4d3900;
+    --warning-border: #664d00;
+    --info-color: #339af0;
+    --info-bg: #1c2841;
+    --info-border: #2c3e50;
+    --primary-color: #339af0;
+    --primary-bg: #1c2841;
+    --primary-border: #2c3e50;
+    
+    /* 输入框和按钮 */
+    --input-bg: #2d2d2d;
+    --input-border: #495057;
+    --input-focus: #339af0;
+    --btn-primary: #339af0;
+    --btn-primary-hover: #228be6;
+    --btn-secondary: #495057;
+    --btn-secondary-hover: #6c757d;
+    --btn-success: #40c057;
+    --btn-success-hover: #37b24d;
+    --btn-danger: #ff6b6b;
+    --btn-danger-hover: #ff5252;
+    --btn-warning: #ffd43b;
+    --btn-warning-hover: #fcc419;
+    
+    /* 卡片和容器 */
+    --card-bg: #2d2d2d;
+    --card-border: #404040;
+    --navbar-bg: #1a1a1a;
+    --navbar-text: #ffffff;
+    --navbar-link: rgba(255, 255, 255, 0.75);
+    --navbar-link-hover: #ffffff;
+    
+    /* 表格 */
+    --table-bg: transparent;
+    --table-accent-bg: #2d2d2d;
+    --table-hover-bg: #3d3d3d;
+    --table-border: #404040;
+    
+    /* 进度条 */
+    --progress-bg: #404040;
+    --progress-bar: #339af0;
+    
+    /* 主题切换开关 */
+    --switch-bg: #495057;
+    --switch-handle: #fff;
+    --switch-active-bg: #339af0;
+}
+
+/* 系统主题检测 - 默认跟随系统主题 */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        /* 自动模式下跟随系统暗色主题 */
+        --bg-color: #1a1a1a;
+        --bg-secondary: #2d2d2d;
+        --bg-tertiary: #3d3d3d;
+        --text-primary: #ffffff;
+        --text-secondary: #b0b0b0;
+        --text-muted: #888888;
+        --border-color: #404040;
+        --shadow: rgba(255, 255, 255, 0.1);
+        --shadow-hover: rgba(255, 255, 255, 0.15);
+        
+        --success-color: #40c057;
+        --success-bg: #1b4332;
+        --success-border: #2d6a4f;
+        --danger-color: #ff6b6b;
+        --danger-bg: #4c1d1d;
+        --danger-border: #6b2c2c;
+        --warning-color: #ffd43b;
+        --warning-bg: #4d3900;
+        --warning-border: #664d00;
+        --info-color: #339af0;
+        --info-bg: #1c2841;
+        --info-border: #2c3e50;
+        --primary-color: #339af0;
+        --primary-bg: #1c2841;
+        --primary-border: #2c3e50;
+        
+        --input-bg: #2d2d2d;
+        --input-border: #495057;
+        --input-focus: #339af0;
+        --btn-primary: #339af0;
+        --btn-primary-hover: #228be6;
+        --btn-secondary: #495057;
+        --btn-secondary-hover: #6c757d;
+        --btn-success: #40c057;
+        --btn-success-hover: #37b24d;
+        --btn-danger: #ff6b6b;
+        --btn-danger-hover: #ff5252;
+        --btn-warning: #ffd43b;
+        --btn-warning-hover: #fcc419;
+        
+        --card-bg: #2d2d2d;
+        --card-border: #404040;
+        --navbar-bg: #1a1a1a;
+        --navbar-text: #ffffff;
+        --navbar-link: rgba(255, 255, 255, 0.75);
+        --navbar-link-hover: #ffffff;
+        
+        --table-bg: transparent;
+        --table-accent-bg: #2d2d2d;
+        --table-hover-bg: #3d3d3d;
+        --table-border: #404040;
+        
+        --progress-bg: #404040;
+        --progress-bar: #339af0;
+        
+        --switch-bg: #495057;
+        --switch-handle: #fff;
+        --switch-active-bg: #339af0;
+    }
+}
+
+/* 主题切换动画 */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* 主题切换选择器样式 */
+.theme-selector {
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+    min-width: 120px;
+    font-size: 13px;
+    border-radius: 6px;
+}
+
+.theme-selector:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-focus) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+}
+
+.theme-selector option {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+}
+
+/* 主题图标 */
+.theme-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    color: var(--navbar-link);
+    vertical-align: middle;
+}
+
+/* 左侧边栏深色模式支持 */
+.list-group-item {
+    background-color: var(--bg-color) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.list-group-item:hover {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+.list-group-item.active {
+    background-color: var(--btn-primary) !important;
+    border-color: var(--btn-primary) !important;
+    color: white !important;
+}
+
+/* 模态框深色模式支持 */
+.modal-content {
+    background-color: var(--bg-color) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.modal-header {
+    background-color: var(--bg-secondary) !important;
+    border-bottom-color: var(--border-color) !important;
+}
+
+.modal-footer {
+    background-color: var(--bg-secondary) !important;
+    border-top-color: var(--border-color) !important;
+}
+
+.modal-title {
+    color: var(--text-primary) !important;
+}
+
+/* 表单元素深色模式支持 */
+.form-label {
+    color: var(--text-primary) !important;
+}
+
+.form-text {
+    color: var(--text-secondary) !important;
+}
+
+.form-select {
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+}
+
+.form-select:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-focus) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+}
+
+.form-select option {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+}
+
+.form-control, .form-control:focus {
+    background-color: var(--input-bg) !important;
+    border-color: var(--input-border) !important;
+    color: var(--text-primary) !important;
+}
+
+.form-control:focus {
+    border-color: var(--input-focus) !important;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+}
+
+/* 表格深色模式支持 */
+.table {
+    color: var(--text-primary) !important;
+}
+
+.table td, .table th {
+    border-color: var(--border-color) !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--table-hover-bg) !important;
+}
+
+/* 徽章和标签深色模式支持 */
+.badge {
+    color: white !important;
+}
+
+/* 按钮组深色模式支持 */
+.btn-group .btn {
+    border-color: var(--border-color) !important;
+}
+
+/* 分页深色模式支持 */
+.pagination .page-link {
+    background-color: var(--bg-color) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.pagination .page-link:hover {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: var(--btn-primary) !important;
+    border-color: var(--btn-primary) !important;
+}
+
+/* 日志执行项深色模式支持 */
+.log-execution-item {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.log-execution-output pre {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* 强制覆盖所有pre标签的背景色 */
+.log-execution-item pre,
+.log-execution-output pre,
+pre.bg-light {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+/* 日志执行元数据样式 */
+.log-execution-meta {
+    color: var(--text-secondary) !important;
+}
+
+.log-execution-header h6 {
+    color: var(--text-primary) !important;
+}
+
+/* 代码编辑器深色模式支持 */
+.CodeMirror {
+    background-color: var(--input-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--input-border) !important;
+}
+
+.CodeMirror-gutters {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.CodeMirror-linenumber {
+    color: var(--text-muted) !important;
+}
+
+/* 下拉菜单深色模式支持 */
+.dropdown-menu {
+    background-color: var(--bg-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+.dropdown-item {
+    color: var(--text-primary) !important;
+}
+
+.dropdown-item:hover {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}

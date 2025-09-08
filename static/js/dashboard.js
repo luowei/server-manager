@@ -9,6 +9,21 @@ let commandEditor = null;
 let deviceStatusHistory = {}; // 记录每个设备的状态历史
 let deviceFailureCount = {}; // 记录每个设备的连续失败次数
 
+// 请求缓存和防抖动机制
+const requestCache = new Map();
+const requestDebounce = new Map();
+
+function debounceRequest(key, fn, delay = 200) {
+    if (requestDebounce.has(key)) {
+        clearTimeout(requestDebounce.get(key));
+    }
+    
+    requestDebounce.set(key, setTimeout(() => {
+        fn();
+        requestDebounce.delete(key);
+    }, delay));
+}
+
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -20,11 +35,27 @@ function initializeApp() {
     loadSystemStatus();
     loadCurrentTab();
     
-    // 定期刷新系统状态
-    setInterval(loadSystemStatus, 30000);
+    // 定时更新系统状态 - 每60秒，减少频率
+    setInterval(loadSystemStatus, 60000);
     
-    // 定期刷新当前标签页内容
-    setInterval(loadCurrentTab, 3000);
+    // 智能刷新当前tab内容 - 只在页面可见且有活动时刷新
+    let refreshInterval;
+    function startSmartRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        
+        // 检查页面可见性
+        if (!document.hidden) {
+            refreshInterval = setInterval(() => {
+                if (!document.hidden) {
+                    loadCurrentTab();
+                }
+            }, 5000); // 增加到5秒间隔
+        }
+    }
+    
+    // 页面可见性变化时重新启动刷新
+    document.addEventListener('visibilitychange', startSmartRefresh);
+    startSmartRefresh();
 }
 
 // 绑定事件处理器
@@ -603,11 +634,11 @@ function renderExecutionLogs(executions) {
                         </div>
                         <div class="col-sm-6">
                             <strong>PID:</strong> ${exec.pid || '-'}<br>
-                            <strong>命令:</strong><br><pre class="bg-light p-2 mt-1" style="font-size: 0.8rem; line-height: 1.3; margin-bottom: 4px; white-space: pre-wrap; word-break: break-all;">${exec.command}</pre>
+                            <strong>命令:</strong><br><pre class="p-2 mt-1" style="background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 0.8rem; line-height: 1.3; margin-bottom: 4px; white-space: pre-wrap; word-break: break-all;">${exec.command}</pre>
                         </div>
                     </div>
                 </div>
-                ${exec.stdout ? `<div class="log-execution-output"><strong>输出:</strong><pre class="bg-light p-1 mt-1" style="font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px;">${exec.stdout}</pre></div>` : ''}
+                ${exec.stdout ? `<div class="log-execution-output"><strong>输出:</strong><pre class="p-1 mt-1" style="background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px;">${exec.stdout}</pre></div>` : ''}
                 ${exec.stderr ? `<div class="log-execution-output"><strong>错误:</strong><pre class="bg-danger text-white p-1 mt-1" style="font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px;">${exec.stderr}</pre></div>` : ''}
                 ${exec.error_message ? `<div class="log-execution-output"><strong>错误信息:</strong><div class="text-danger" style="font-size: 0.8rem;">${exec.error_message}</div></div>` : ''}
             </div>
@@ -1247,3 +1278,55 @@ document.querySelectorAll('.modal').forEach(modal => {
         }
     });
 });
+
+// 渐进式页面初始化
+function initializePageProgressively() {
+    // 立即显示当前tab的基础UI
+    showCurrentTab();
+    
+    // 延迟加载数据，避免阻塞页面渲染
+    setTimeout(() => {
+        loadCurrentTab();
+    }, 100);
+    
+    // 进一步延迟加载系统状态，减少初始加载压力
+    setTimeout(() => {
+        if (!document.hidden) {
+            loadSystemStatus();
+        }
+    }, 500);
+}
+
+// 显示当前tab的基础UI（不加载数据）
+function showCurrentTab() {
+    const activeTab = document.querySelector('.list-group-item.active');
+    if (activeTab) {
+        const tabId = activeTab.getAttribute('data-tab');
+        // 只显示UI，不加载数据
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.add('d-none');
+        });
+        const targetContent = document.getElementById(`${tabId}-content`);
+        if (targetContent) {
+            targetContent.classList.remove('d-none');
+        }
+        currentTab = tabId;
+    }
+}
+
+// 优化的loadCurrentTab函数，使用缓存和错误恢复
+const originalLoadCurrentTab = window.loadCurrentTab;
+window.loadCurrentTab = function() {
+    try {
+        if (originalLoadCurrentTab) {
+            originalLoadCurrentTab();
+        }
+    } catch (error) {
+        console.error('加载tab内容时出错:', error);
+        // 降级处理：显示基础内容
+        showCurrentTab();
+    }
+};
+
+// 页面加载完成后执行初始化
+initializePageProgressively();

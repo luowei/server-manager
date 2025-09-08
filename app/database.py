@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from datetime import datetime
 from tinydb import TinyDB, Query
 from tinydb.operations import increment
@@ -9,6 +10,35 @@ from .models import WOLDevice, ScheduledTask, TaskExecution, TaskStatus
 
 
 logger = logging.getLogger(__name__)
+
+
+def cache_with_ttl(ttl_seconds=30):
+    """带TTL的缓存装饰器"""
+    def decorator(func):
+        cache = {}
+        
+        def wrapper(self, *args, **kwargs):
+            cache_key = f"{func.__name__}_{str(args)}_{str(sorted(kwargs.items()))}"
+            current_time = time.time()
+            
+            # 检查缓存是否存在且未过期
+            if cache_key in cache:
+                cached_time, cached_result = cache[cache_key]
+                if current_time - cached_time < ttl_seconds:
+                    return cached_result
+            
+            # 执行函数并缓存结果
+            result = func(self, *args, **kwargs)
+            cache[cache_key] = (current_time, result)
+            
+            # 清理过期缓存
+            expired_keys = [k for k, (t, _) in cache.items() if current_time - t > ttl_seconds]
+            for k in expired_keys:
+                del cache[k]
+            
+            return result
+        return wrapper
+    return decorator
 
 
 class DatabaseManager:
@@ -254,6 +284,27 @@ class DatabaseManager:
             return TaskExecution(**result)
         return None
     
+    @cache_with_ttl(30)
+    def get_execution_count(self) -> int:
+        """获取执行记录总数"""
+        return len(self.executions_db.all())
+    
+    @cache_with_ttl(10)
+    def get_device_count(self) -> int:
+        """获取设备总数"""
+        return len(self.devices_db.all())
+    
+    @cache_with_ttl(10)
+    def get_task_count(self) -> int:
+        """获取任务总数"""
+        return len(self.tasks_db.all())
+    
+    @cache_with_ttl(10)
+    def get_enabled_task_count(self) -> int:
+        """获取启用的任务总数"""
+        Task = Query()
+        return len(self.tasks_db.search(Task.enabled == True))
+    
     def get_all_executions(
         self, 
         limit: int = 100,
@@ -263,31 +314,72 @@ class DatabaseManager:
     ) -> List[TaskExecution]:
         """获取所有任务执行记录"""
         executions = []
+        
+        # 如果没有搜索条件，直接获取前N条记录来提高性能
+        if not search:
+            results = self.executions_db.all()
+            
+            # 排序
+            reverse = sort_order.lower() == "desc"
+            sort_key_map = {
+                "started_at": lambda x: x.get('started_at') or '',
+                "task_name": lambda x: x.get('task_name', ''),
+                "status": lambda x: x.get('status', ''),
+                "created_at": lambda x: x.get('created_at', '')
+            }
+            sort_key = sort_key_map.get(sort_by, sort_key_map["created_at"])
+            
+            # 使用sorted()进行内存友好的排序
+            sorted_results = sorted(results, key=sort_key, reverse=reverse)
+            
+            # 只处理需要的记录数量
+            for exec_dict in sorted_results[:limit]:
+                exec_dict = exec_dict.copy()
+                
+                # 确保created_at字段存在
+                if 'created_at' in exec_dict:
+                    exec_dict['created_at'] = self._parse_datetime(exec_dict['created_at'])
+                else:
+                    exec_dict['created_at'] = datetime.now()
+                    
+                if exec_dict.get('started_at'):
+                    exec_dict['started_at'] = self._parse_datetime(exec_dict['started_at'])
+                if exec_dict.get('completed_at'):
+                    exec_dict['completed_at'] = self._parse_datetime(exec_dict['completed_at'])
+                
+                try:
+                    executions.append(TaskExecution(**exec_dict))
+                except Exception as e:
+                    logger.error(f"解析执行记录失败: {e}, 记录: {exec_dict}")
+                    continue
+            
+            return executions
+        
+        # 有搜索条件时的处理
         results = self.executions_db.all()
         
         # 过滤搜索
-        if search:
-            search_lower = search.lower()
-            results = [
-                r for r in results 
-                if search_lower in r.get('task_name', '').lower() or
-                   search_lower in r.get('command', '').lower() or
-                   search_lower in (r.get('stdout', '') or '').lower() or
-                   search_lower in (r.get('stderr', '') or '').lower()
-            ]
+        search_lower = search.lower()
+        filtered_results = []
+        for r in results:
+            if (search_lower in r.get('task_name', '').lower() or
+                search_lower in r.get('command', '').lower() or
+                search_lower in (r.get('stdout', '') or '').lower() or
+                search_lower in (r.get('stderr', '') or '').lower()):
+                filtered_results.append(r)
         
         # 排序
         reverse = sort_order.lower() == "desc"
         if sort_by == "started_at":
-            results.sort(key=lambda x: x.get('started_at') or '', reverse=reverse)
+            filtered_results.sort(key=lambda x: x.get('started_at') or '', reverse=reverse)
         elif sort_by == "task_name":
-            results.sort(key=lambda x: x.get('task_name', ''), reverse=reverse)
+            filtered_results.sort(key=lambda x: x.get('task_name', ''), reverse=reverse)
         elif sort_by == "status":
-            results.sort(key=lambda x: x.get('status', ''), reverse=reverse)
+            filtered_results.sort(key=lambda x: x.get('status', ''), reverse=reverse)
         else:  # default: created_at
-            results.sort(key=lambda x: x.get('created_at', ''), reverse=reverse)
+            filtered_results.sort(key=lambda x: x.get('created_at', ''), reverse=reverse)
         
-        for exec_dict in results[:limit]:
+        for exec_dict in filtered_results[:limit]:
             exec_dict = exec_dict.copy()
             
             # 确保created_at字段存在

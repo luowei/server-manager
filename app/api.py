@@ -388,24 +388,51 @@ class ServerManagerAPI:
                 import psutil
                 import platform
                 from datetime import datetime
+                import asyncio
                 
-                jobs_info = self.scheduler.get_all_jobs_info()
-                device_count = len(self.db_manager.get_all_devices())
-                task_count = len(self.db_manager.get_all_tasks())
-                enabled_task_count = len(self.db_manager.get_enabled_tasks())
+                # 使用并发获取所有数据以提升性能
+                async def get_jobs_info():
+                    return self.scheduler.get_all_jobs_info()
                 
-                # 获取系统资源信息
-                cpu_percent = psutil.cpu_percent(interval=1)
-                memory = psutil.virtual_memory()
-                disk = psutil.disk_usage('/')
+                async def get_db_counts():
+                    return {
+                        'device_count': self.db_manager.get_device_count(),
+                        'task_count': self.db_manager.get_task_count(),
+                        'enabled_task_count': self.db_manager.get_enabled_task_count()
+                    }
                 
-                # 获取网络统计
-                network = psutil.net_io_counters()
+                async def get_system_resources():
+                    # 使用无阻塞方式获取CPU使用率
+                    cpu_percent = psutil.cpu_percent(interval=0.1) or psutil.cpu_percent()
+                    memory = psutil.virtual_memory()
+                    disk = psutil.disk_usage('/')
+                    network = psutil.net_io_counters()
+                    
+                    return {
+                        'cpu_percent': cpu_percent,
+                        'memory': memory,
+                        'disk': disk,
+                        'network': network
+                    }
                 
-                # 获取系统启动时间
-                boot_time = datetime.fromtimestamp(psutil.boot_time())
-                current_time = datetime.now()
-                uptime = current_time - boot_time
+                async def get_system_times():
+                    boot_time = datetime.fromtimestamp(psutil.boot_time())
+                    current_time = datetime.now()
+                    uptime = current_time - boot_time
+                    
+                    return {
+                        'boot_time': boot_time,
+                        'current_time': current_time,
+                        'uptime': uptime
+                    }
+                
+                # 并发执行所有数据获取任务
+                jobs_info, db_counts, system_resources, system_times = await asyncio.gather(
+                    get_jobs_info(),
+                    get_db_counts(),
+                    get_system_resources(),
+                    get_system_times()
+                )
                 
                 return ApiResponse(
                     success=True,
@@ -413,32 +440,32 @@ class ServerManagerAPI:
                     data={
                         "server": {
                             "status": "running",
-                            "uptime": str(uptime).split('.')[0],  # 去掉微秒
-                            "version": "1.2.0",
+                            "uptime": str(system_times['uptime']).split('.')[0],  # 去掉微秒
+                            "version": "1.3.0",
                             "python_version": platform.python_version(),
                             "platform": platform.system(),
                             "architecture": platform.machine()
                         },
                         "system": {
-                            "cpu_usage": round(cpu_percent, 1),
+                            "cpu_usage": round(system_resources['cpu_percent'], 1),
                             "cpu_count": psutil.cpu_count(),
                             "memory": {
-                                "total": memory.total,
-                                "available": memory.available,
-                                "used": memory.used,
-                                "percent": round(memory.percent, 1)
+                                "total": system_resources['memory'].total,
+                                "available": system_resources['memory'].available,
+                                "used": system_resources['memory'].used,
+                                "percent": round(system_resources['memory'].percent, 1)
                             },
                             "disk": {
-                                "total": disk.total,
-                                "used": disk.used,
-                                "free": disk.free,
-                                "percent": round((disk.used / (disk.used + disk.free)) * 100, 1)
+                                "total": system_resources['disk'].total,
+                                "used": system_resources['disk'].used,
+                                "free": system_resources['disk'].free,
+                                "percent": round((system_resources['disk'].used / (system_resources['disk'].used + system_resources['disk'].free)) * 100, 1)
                             },
                             "network": {
-                                "bytes_sent": network.bytes_sent,
-                                "bytes_recv": network.bytes_recv,
-                                "packets_sent": network.packets_sent,
-                                "packets_recv": network.packets_recv
+                                "bytes_sent": system_resources['network'].bytes_sent,
+                                "bytes_recv": system_resources['network'].bytes_recv,
+                                "packets_sent": system_resources['network'].packets_sent,
+                                "packets_recv": system_resources['network'].packets_recv
                             }
                         },
                         "scheduler": {
@@ -447,10 +474,10 @@ class ServerManagerAPI:
                             "jobs": jobs_info
                         },
                         "database": {
-                            "device_count": device_count,
-                            "task_count": task_count,
-                            "enabled_task_count": enabled_task_count,
-                            "execution_count": len(self.db_manager.get_all_executions(limit=1000))
+                            "device_count": db_counts['device_count'],
+                            "task_count": db_counts['task_count'],
+                            "enabled_task_count": db_counts['enabled_task_count'],
+                            "execution_count": self.db_manager.get_execution_count()
                         }
                     }
                 )
